@@ -1,12 +1,18 @@
-﻿<Window x:Class="F0w3R.MainWindow"
+﻿<Window x:Class="T3_DrawingInAir.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:F0w3R"
+        xmlns:local="clr-namespace:T3_DrawingInAir"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="Drawing In Air" Height="450" Width="800" Loaded="Window_Loaded">
     <Grid>
-        
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="3*"/>
+            <ColumnDefinition/>
+        </Grid.ColumnDefinitions>
+        <Image x:Name="kinectDepthImage" HorizontalAlignment="Left" Margin="10,0,0,0" VerticalAlignment="Top"/>
+        <Image x:Name="kinectColorImage" HorizontalAlignment="Right" VerticalAlignment="Top" Grid.Column="1"/>
+
     </Grid>
 </Window>
