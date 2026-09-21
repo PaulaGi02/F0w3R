@@ -57,6 +57,9 @@ namespace Fl0w3R
         private Queue<int> recentDepths = new Queue<int>();
         private const int SMOOTHING_WINDOW = 5;
 
+        // flower frame images loading
+        private BitmapImage[] flowerFrames = new BitmapImage[num_zo];
+
         public MainWindow()
         {
             InitializeComponent();
@@ -97,6 +100,17 @@ namespace Fl0w3R
             colorFrameManager = new ColorFrameManager();
             colorFrameManager.Init(sensor, kinectColorImage);
 
+            LoadFlowerFrames();
+
+        }
+
+        private void LoadFlowerFrames()
+        {
+            for (int i = 0; i < num_zo; i++)
+            {
+                string uriPath = $"pack://application:,,,/Assets, flower{i + 1}.png";
+                flowerFrames[i] = new BitmapImage(new Uri(uriPath, UriKind.Absolute));
+            }
         }
 
         // Store latst body index frame because ...
@@ -126,9 +140,7 @@ namespace Fl0w3R
 
                 // find nearest depth value
                 int nearestDepth = FindNearestDepthInBodyMask();
-
                 UpdateZoneFromDepth(nearestDepth);
-
                 UpdateDebugText(nearestDepth);
 
                 // visualize depth image (code from class)
@@ -167,7 +179,7 @@ namespace Fl0w3R
             }
         }
 
-        // --- NEW: scan only pixels that belong to a person, return the smallest depth found ---
+        // scan only pixels that belong to a person, return the smallest depth found 
         private int FindNearestDepthInBodyMask()
         {
             if (bodyIndexData == null || depthData == null) return -1;
@@ -181,7 +193,7 @@ namespace Fl0w3R
                 if (bodyIndexData[i] != 0xff)
                 {
                     ushort depth = depthData[i];
-                    if (depth > 0 && depth < nearest) // depth == 0 means invalid reading, skip it
+                    if (depth > 0 && depth < nearest) // depth == 0 means invalid reading
                     {
                         nearest = depth;
                         found = true;
@@ -192,13 +204,12 @@ namespace Fl0w3R
             return found ? nearest : -1;
         }
 
-        // --- NEW: smoothing + zone classification with hysteresis ---
+        // smoothing + zone classification with hysteresis 
         private void UpdateZoneFromDepth(int rawDepth)
         {
             if (rawDepth <= 0)
             {
-                // no person detected — don't change currentZone here,
-                // just note it in the debug output separately if you want
+                // no person detected — don't change curZone here,
                 return;
             }
 
@@ -214,15 +225,24 @@ namespace Fl0w3R
             {
                 if (avgDepth >= zoneRanges[z, 0] && avgDepth <= zoneRanges[z, 1])
                 {
-                    curZone = z + 1; // zones are 1-indexed (Zone 1 - Zone 5)
+                    if (curZone != z + 1)
+                    {
+                        curZone = z + 1;
+                        UpdateFlowerImage();
+                    }
                     return;
                 }
             }
 
-            // if we reach here, avgDepth is inside a buffer gap between zones —
-            // hysteresis: keep the last valid zone unchanged instead of flickering
+        // if we reach here, avgDepth is inside a buffer gap between zones —
+        // hysteresis: keep the last valid zone unchanged instead of flickering
         }
+        private void UpdateFlowerImage()
+        {
+            if (flowerImage == null || curZone < 1 || curZone > num_zo) return;
+            flowerImage.Source = flowerFrames[curZone - 1];
 
+        }
         private void UpdateDebugText(int rawDepth)
         {
             string zoneLabel = curZone > 0 ? curZone.ToString() : "--";
