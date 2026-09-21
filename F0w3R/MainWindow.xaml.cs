@@ -2,6 +2,7 @@ using Microsoft.Kinect;
 using NUI3D;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Remoting.Channels;
@@ -22,6 +23,7 @@ namespace Fl0w3R
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
+    [DebuggerDisplay("{" + nameof(GetDebuggerDisplay) + "(),nq}")]
     public partial class MainWindow : Window
     {
         private KinectSensor sensor;
@@ -44,7 +46,7 @@ namespace Fl0w3R
         private int curZone = -1; // no valid Zone (no person detected)
 
         // Adding defined Zones in which the Frames change (leaving some space inbetween because of noise)
-        private readonly int[,] zoneRange = new int[num_zo, 2]
+        private readonly int[,] zoneRanges = new int[num_zo, 2]
         {   // Zone 1-5
             {500, 680},
             {720, 900},
@@ -52,6 +54,9 @@ namespace Fl0w3R
             {1160, 1340},
             {1380, 1560},
         };
+
+        private Queue<int> recentDepths = new Queue<int>();
+        private const int SMOOTHING_WINDOW = 5;
 
         public MainWindow()
         {
@@ -125,7 +130,7 @@ namespace Fl0w3R
 
                 UpdateZoneFromDepth(nearestDepth);
 
-                UpdateDabugText(nearestDepth);
+                UpdateDebugText(nearestDepth);
 
                 // visualize depth image (code from class)
                 for (int x = 0; x < depthFrameDescription.Width; x++)
@@ -133,55 +138,106 @@ namespace Fl0w3R
                     {
                         int index = y * depthFrameDescription.Width + x;
                         ushort depth = depthData[index];
-                    
-
-                    // highlight person for better seeing/ undertanding
-                    bool isPerson = bodyIndexData != null && bodyIndexData[index] != 0xff;
-
-                    if (isPerson)
-                    {
-                        depthPixels[bytesPerPixel * index] = 0;
-                        depthPixels[bytesPerPixel * index + 1] = 255; //green
-                        depthPixels[bytesPerPixel * index + 2] = 0;
-                    }
-                    else
-                    {
-                        byte depthByte = (byte)((depth - minDepth) * 255.0 / (maxDepth - minDepth));
-                        depthByte = (byte)(255 - depthByte);
-                        depthPixels[bytesPerPixel * index] = depthByte;
-                        depthPixels[bytesPerPixel * index + 1] = depthByte;
-                        depthPixels[bytesPerPixel * index + 2] = depthByte;
-                    }
-                }
 
 
+                        // highlight person for better seeing/ undertanding
+                        bool isPerson = bodyIndexData != null && bodyIndexData[index] != 0xff;
 
-                    // class exercise 
-                    if (depth > drawingSpaceMin && depth < drawingSpaceMax) // mm
-                {
-                    // if (y < depthFrameDescription.Height / 2)
-                    if (x < depthFrameDescription.Width / 2)
-                    {
-                        depthPixels[bytesPerPixel * index] = 0;
-                        depthPixels[bytesPerPixel * index + 1] = 255; // green 
-                        depthPixels[bytesPerPixel * index + 2] = 0;
+                        if (isPerson)
+                        {
+                            depthPixels[bytesPerPixel * index] = 0;
+                            depthPixels[bytesPerPixel * index + 1] = 255; //green
+                            depthPixels[bytesPerPixel * index + 2] = 0;
+                        }
+                        else
+                        {
+                            byte depthByte = (byte)((depth - minDepth) * 255.0 / (maxDepth - minDepth));
+                            depthByte = (byte)(255 - depthByte);
+                            depthPixels[bytesPerPixel * index] = depthByte;
+                            depthPixels[bytesPerPixel * index + 1] = depthByte;
+                            depthPixels[bytesPerPixel * index + 2] = depthByte;
+                        }
                     }
-                    else
-                    {
-                        depthPixels[bytesPerPixel * index] = 0;
-                        depthPixels[bytesPerPixel * index + 1] = 0;
-                        depthPixels[bytesPerPixel * index + 2] = 255; // red
-                    }
-                }
-                    }
+
 
 
                 depthImageBitmap.WritePixels(
-                  new Int32Rect(0, 0, depthFrameDescription.Width, depthFrameDescription.Height),
-                  depthPixels, // BGR32 pixel data
-                               // stride: width in bytes of a single row of pixel data
-                  depthFrameDescription.Width * bytesPerPixel, 0);
+        new Int32Rect(0, 0, depthFrameDescription.Width, depthFrameDescription.Height),
+        depthPixels,
+        depthFrameDescription.Width * bytesPerPixel, 0);
             }
+        }
+
+        // --- NEW: scan only pixels that belong to a person, return the smallest depth found ---
+        private int FindNearestDepthInBodyMask()
+        {
+            if (bodyIndexData == null || depthData == null) return -1;
+
+            int nearest = int.MaxValue;
+            bool found = false;
+
+            for (int i = 0; i < bodyIndexData.Length; i++)
+            {
+                // 0xff means "no body detected at this pixel"; any other value (0-5) is a body ID
+                if (bodyIndexData[i] != 0xff)
+                {
+                    ushort depth = depthData[i];
+                    if (depth > 0 && depth < nearest) // depth == 0 means invalid reading, skip it
+                    {
+                        nearest = depth;
+                        found = true;
+                    }
+                }
+            }
+
+            return found ? nearest : -1;
+        }
+
+        // --- NEW: smoothing + zone classification with hysteresis ---
+        private void UpdateZoneFromDepth(int rawDepth)
+        {
+            if (rawDepth <= 0)
+            {
+                // no person detected — don't change currentZone here,
+                // just note it in the debug output separately if you want
+                return;
+            }
+
+            // moving average to reduce sensor noise
+            recentDepths.Enqueue(rawDepth);
+            if (recentDepths.Count > SMOOTHING_WINDOW)
+                recentDepths.Dequeue();
+
+            double avgDepth = recentDepths.Average();
+
+            // check which fixed zone the smoothed depth falls into
+            for (int z = 0; z < num_zo; z++)
+            {
+                if (avgDepth >= zoneRanges[z, 0] && avgDepth <= zoneRanges[z, 1])
+                {
+                    curZone = z + 1; // zones are 1-indexed (Zone 1 - Zone 5)
+                    return;
+                }
+            }
+
+            // if we reach here, avgDepth is inside a buffer gap between zones —
+            // hysteresis: keep the last valid zone unchanged instead of flickering
+        }
+
+        private void UpdateDebugText(int rawDepth)
+        {
+            if (debugText == null) return; // safety check in case XAML not updated yet
+
+            string zoneLabel = curZone > 0 ? curZone.ToString() : "--";
+            string depthLabel = rawDepth > 0 ? rawDepth.ToString() : "--";
+            debugText.Text = $"Zone: {zoneLabel} | Depth: {depthLabel} mm";
+        }
+
+        private void UpdateDebugText(int rawDepth)
+        {
+            string zoneLabel = curZone > 0 ? curZone.ToString() : "--";
+            string depthLabel = rawDepth > 0 ? rawDepth.ToString() : "--";
+            debugText.Text = $"Zone: {zoneLabel} | Depth: {depthLabel} mm";
         }
 
         private void Window_KeyDown(object sender, KeyEventArgs e)
