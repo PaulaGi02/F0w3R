@@ -1,6 +1,9 @@
+using Microsoft.Kinect;
+using NUI3D;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.Remoting.Channels;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,9 +16,6 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
-
-using Microsoft.Kinect;
-using NUI3D;
 
 namespace Fl0w3R
 {
@@ -105,6 +105,7 @@ namespace Fl0w3R
             }
         }
 
+        // old code
         private void DepthFrameReader_FrameArrived(object sender, DepthFrameArrivedEventArgs e)
         {
             // using statement automatically takes care of disposing of 
@@ -116,65 +117,62 @@ namespace Fl0w3R
                 depthFrame.CopyFrameDataToArray(depthData);
 
                 // depth data to pixels
-                ushort minDepth = depthFrame.DepthMinReliableDistance; // 500 
-                ushort maxDepth = depthFrame.DepthMaxReliableDistance; // 4500 
+                ushort minDepth = depthFrame.DepthMinReliableDistance;
+                ushort maxDepth = depthFrame.DepthMaxReliableDistance;
 
-                /*
-                for (int i = 0; i < depthData.Length; ++i)
-                {
-                    ushort depth = depthData[i];
+                // find nearest depth value
+                int nearestDepth = FindNearestDepthInBodyMask();
 
-                    // drawing space
-                    if (depth < drawingSpaceMax && depth > drawingSpaceMin)
-                    {
-                        depthPixels[bytesPerPixel * i] = 0;
-                        depthPixels[bytesPerPixel * i + 1] = 255; // green 
-                        depthPixels[bytesPerPixel * i + 2] = 0;
-                    }
-                    // class exercise 3: another drawing space  
-                    else if (depth > 2000 && depth < 2500)
-                    {
-                        depthPixels[4 * i] = 0;
-                        depthPixels[4 * i + 1] = 0;
-                        depthPixels[4 * i + 2] = 255; // red 
-                    }
+                UpdateZoneFromDepth(nearestDepth);
 
-                    // class exercise 2: comment out the following else block 
-                    else
-                    {
-                        byte depthByte = (byte)((depth - minDepth) * 255.0 / (maxDepth - minDepth));
-                        depthByte = (byte)(255 - depthByte);
+                UpdateDabugText(nearestDepth);
 
-                        depthPixels[bytesPerPixel * i] = depthByte;
-                        depthPixels[bytesPerPixel * i + 1] = depthByte;
-                        depthPixels[bytesPerPixel * i + 2] = depthByte;
-                    }
-                }*/
-
-                // class exercise 4
+                // visualize depth image (code from class)
                 for (int x = 0; x < depthFrameDescription.Width; x++)
                     for (int y = 0; y < depthFrameDescription.Height; y++)
                     {
                         int index = y * depthFrameDescription.Width + x;
                         ushort depth = depthData[index];
+                    
 
-                        // class exercise 
-                        if (depth > drawingSpaceMin && depth < drawingSpaceMax) // mm
-                        {
-                            // if (y < depthFrameDescription.Height / 2)
-                            if (x < depthFrameDescription.Width / 2)
-                            {
-                                depthPixels[bytesPerPixel * index] = 0;
-                                depthPixels[bytesPerPixel * index + 1] = 255; // green 
-                                depthPixels[bytesPerPixel * index + 2] = 0;
-                            }
-                            else
-                            {
-                                depthPixels[bytesPerPixel * index] = 0;
-                                depthPixels[bytesPerPixel * index + 1] = 0;
-                                depthPixels[bytesPerPixel * index + 2] = 255; // red
-                            }
-                        }
+                    // highlight person for better seeing/ undertanding
+                    bool isPerson = bodyIndexData != null && bodyIndexData[index] != 0xff;
+
+                    if (isPerson)
+                    {
+                        depthPixels[bytesPerPixel * index] = 0;
+                        depthPixels[bytesPerPixel * index + 1] = 255; //green
+                        depthPixels[bytesPerPixel * index + 2] = 0;
+                    }
+                    else
+                    {
+                        byte depthByte = (byte)((depth - minDepth) * 255.0 / (maxDepth - minDepth));
+                        depthByte = (byte)(255 - depthByte);
+                        depthPixels[bytesPerPixel * index] = depthByte;
+                        depthPixels[bytesPerPixel * index + 1] = depthByte;
+                        depthPixels[bytesPerPixel * index + 2] = depthByte;
+                    }
+                }
+
+
+
+                    // class exercise 
+                    if (depth > drawingSpaceMin && depth < drawingSpaceMax) // mm
+                {
+                    // if (y < depthFrameDescription.Height / 2)
+                    if (x < depthFrameDescription.Width / 2)
+                    {
+                        depthPixels[bytesPerPixel * index] = 0;
+                        depthPixels[bytesPerPixel * index + 1] = 255; // green 
+                        depthPixels[bytesPerPixel * index + 2] = 0;
+                    }
+                    else
+                    {
+                        depthPixels[bytesPerPixel * index] = 0;
+                        depthPixels[bytesPerPixel * index + 1] = 0;
+                        depthPixels[bytesPerPixel * index + 2] = 255; // red
+                    }
+                }
                     }
 
 
