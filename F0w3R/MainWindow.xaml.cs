@@ -23,7 +23,6 @@ namespace Fl0w3R
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
-    [DebuggerDisplay("{" + nameof(GetDebuggerDisplay) + "(),nq}")]
     public partial class MainWindow : Window
     {
         private KinectSensor sensor;
@@ -222,15 +221,6 @@ namespace Fl0w3R
 
             // if we reach here, avgDepth is inside a buffer gap between zones —
             // hysteresis: keep the last valid zone unchanged instead of flickering
-        }
-
-        private void UpdateDebugText(int rawDepth)
-        {
-            if (debugText == null) return; // safety check in case XAML not updated yet
-
-            string zoneLabel = curZone > 0 ? curZone.ToString() : "--";
-            string depthLabel = rawDepth > 0 ? rawDepth.ToString() : "--";
-            debugText.Text = $"Zone: {zoneLabel} | Depth: {depthLabel} mm";
         }
 
         private void UpdateDebugText(int rawDepth)
