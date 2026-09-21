@@ -98,6 +98,11 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include=".gitignore" />
+    <Resource Include="Assets\flower1.png" />
+    <Resource Include="Assets\flower2.png" />
+    <Resource Include="Assets\flower3.png" />
+    <Resource Include="Assets\flower4.png" />
+    <Resource Include="Assets\flower5.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

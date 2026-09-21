@@ -47,11 +47,11 @@ namespace Fl0w3R
         // Adding defined Zones in which the Frames change (leaving some space inbetween because of noise)
         private readonly int[,] zoneRanges = new int[num_zo, 2]
         {   // Zone 1-5
-            {500, 680},
-            {720, 900},
-            {940, 1120},
-            {1160, 1340},
-            {1380, 1560},
+            {500, 620},
+            {630, 700},
+            {710, 780},
+            {790, 860},
+            {870, 940},
         };
 
         private Queue<int> recentDepths = new Queue<int>();
@@ -108,7 +108,7 @@ namespace Fl0w3R
         {
             for (int i = 0; i < num_zo; i++)
             {
-                string uriPath = $"pack://application:,,,/Assets, flower{i + 1}.png";
+                string uriPath = $"pack://application:,,,/Assets/flower{i + 1}.png";
                 flowerFrames[i] = new BitmapImage(new Uri(uriPath, UriKind.Absolute));
             }
         }
