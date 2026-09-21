@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Remoting.Channels;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -16,7 +17,7 @@ using System.Windows.Shapes;
 using Microsoft.Kinect;
 using NUI3D;
 
-namespace T3_DrawingInAir
+namespace Fl0w3R
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
@@ -27,42 +28,60 @@ namespace T3_DrawingInAir
 
         private FrameDescription depthFrameDescription = null;
         private ushort[] depthData = null;
-
         private int bytesPerPixel = 4; // depth -> color image
         private byte[] depthPixels = null; // color channels 
         private WriteableBitmap depthImageBitmap = null;
 
-        private int drawingSpaceMin = 1500; // mm 
-        private int drawingSpaceMax = 2000; // mm 
-
         private ColorFrameManager colorFrameManager;
+
+        //Base structure adapted from the class excises BodyIndexFrame integration and depth Zone detection
+        private BodyIndexFrameReader bodyIndexFrameReader = null;
+        private FrameDescription bodyIndexFrameDescription = null;
+        private byte[] bodyIndexData = null;
+
+        // Zone detection state
+        private const int num_zo = 5;
+        private int curZone = -1; // no valid Zone (no person detected)
+
+        // Adding defined Zones in which the Frames change (leaving some space inbetween because of noise)
+        private readonly int[,] zoneRange = new int[num_zo, 2]
+        {   // Zone 1-5
+            {500, 680},
+            {720, 900},
+            {940, 1120},
+            {1160, 1340},
+            {1380, 1560},
+        };
 
         public MainWindow()
         {
             InitializeComponent();
         }
 
-
-
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             System.Console.WriteLine("window loaded");
-
             sensor = KinectSensor.GetDefault(); // get the default Kinect sensor 
 
+            //existing depth reader setup
             // Open the reader for the depth frames
             DepthFrameReader depthFrameReader = sensor.DepthFrameSource.OpenReader();
-
             // register an event handler for FrameArrived 
             depthFrameReader.FrameArrived += DepthFrameReader_FrameArrived;
 
+            //bodyindex Reader setup
+            bodyIndexFrameReader = sensor.BodyIndexFrameSource.OpenReader();
+            bodyIndexFrameReader.FrameArrived += BodyIndexFrameReader_FrameArrived;
+            bodyIndexFrameDescription = sensor.BodyIndexFrameSource.FrameDescription;
+
+            bodyIndexData = new byte[bodyIndexFrameDescription.LengthInPixels];
+
             sensor.Open();
 
-            // allocate storage for depth data
-            depthFrameDescription = sensor.DepthFrameSource.FrameDescription;
-            // 16 - bit unsigned integer per pixel
-            depthData = new ushort[depthFrameDescription.LengthInPixels];
 
+            //old code
+            depthFrameDescription = sensor.DepthFrameSource.FrameDescription;
+            depthData = new ushort[depthFrameDescription.LengthInPixels];
             depthPixels = new byte[depthFrameDescription.LengthInPixels * bytesPerPixel];
 
             depthImageBitmap = new WriteableBitmap(
@@ -74,6 +93,16 @@ namespace T3_DrawingInAir
             colorFrameManager = new ColorFrameManager();
             colorFrameManager.Init(sensor, kinectColorImage);
 
+        }
+
+        // Store latst body index frame because ...
+        private void BodyIndexFrameReader_FrameArrived(object sender, BodyIndexFrameArrivedEventArgs e)
+        {
+            using (BodyIndexFrame bodyIndexFrame = e.FrameReference.AcquireFrame())
+            {
+                if (bodyIndexFrame == null) return;
+                bodyIndexFrame.CopyFrameDataToArray(bodyIndexData);
+            }
         }
 
         private void DepthFrameReader_FrameArrived(object sender, DepthFrameArrivedEventArgs e)
