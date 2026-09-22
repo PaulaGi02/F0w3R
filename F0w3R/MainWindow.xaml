@@ -8,7 +8,7 @@
         Title="Fl0w3R" Height="500" Width="1100" Loaded="Window_Loaded">
 
 
-    <Grid Background="Black">
+    <Grid Background="Black" RenderTransformOrigin="0.501,0.49" Margin="0,0,0,-16">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="341*" />
             <ColumnDefinition Width="210*"/>
@@ -21,30 +21,15 @@
         </Grid.RowDefinitions>
 
         <!-- Depth Image -->
-        <Image x:Name="kinectDepthImage"
-               Grid.Column="0"
-               Grid.Row="0"
-               HorizontalAlignment="Left"
-               Margin="10,0,0,0"
-               VerticalAlignment="Top"/>
+        <Image x:Name="kinectDepthImage" Grid.Column="0" Grid.Row="0" HorizontalAlignment="Left"  Margin="10,0,0,0" VerticalAlignment="Top"/>
 
         <!--Color Image -->
-        <Image x:Name="kinectColorImage"
-               Grid.Column="3"
-               Grid.Row="0"
-               HorizontalAlignment="Right"
-               VerticalAlignment="Top" Margin="0,0,275,0"
-               />
+        <Image x:Name="kinectColorImage" Grid.Column="3" Grid.Row="0" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,0,275,0" />
         <Image x:Name="flowerImage" Grid.Column="3" Margin="10,0,10,0" Stretch="Uniform" VerticalAlignment="Center" />
 
+        <ProgressBar x:Name="dwellProgressBar" Grid.Row="1" Grid.ColumnSpan="4" Margin="303,18,28,17" Height="25" Minimum="0" Maximum="100" Value="2" />
+
         <!--Debug Text -->
-        <TextBlock x:Name="debugText"
-                   Grid.ColumnSpan="2"
-                   Grid.Row="1"
-                   Foreground="Lime"
-                   FontSize="20"
-                   Text="Zone: -- | Depth: -- mm"
-                   HorizontalAlignment="Left"
-                   VerticalAlignment="Center" Margin="309,0,0,0"/>
+        <TextBlock x:Name="debugText" Grid.Row="1" Foreground="Lime" FontSize="20" Text="Zone: -- | Depth: -- mm" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="-0.714,0.667"/>
     </Grid>
 </Window>

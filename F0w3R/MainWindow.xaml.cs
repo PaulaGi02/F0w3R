@@ -1,6 +1,7 @@
 using Microsoft.Kinect;
 using NUI3D;
 using System;
+using System.CodeDom;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -59,6 +60,11 @@ namespace Fl0w3R
 
         // flower frame images loading
         private BitmapImage[] flowerFrames = new BitmapImage[num_zo];
+
+        // dwell state 
+        private int dwZo = -1; // which zone we are currretnly timing
+        private DateTime dwellStartTime;
+        private const double DWELL_SECONDS = 2.0;
 
         public MainWindow()
         {
@@ -141,6 +147,7 @@ namespace Fl0w3R
                 // find nearest depth value
                 int nearestDepth = FindNearestDepthInBodyMask();
                 UpdateZoneFromDepth(nearestDepth);
+                UpdateDwellProcess();
                 UpdateDebugText(nearestDepth);
 
                 // visualize depth image (code from class)
@@ -248,6 +255,37 @@ namespace Fl0w3R
             string zoneLabel = curZone > 0 ? curZone.ToString() : "--";
             string depthLabel = rawDepth > 0 ? rawDepth.ToString() : "--";
             debugText.Text = $"Zone: {zoneLabel} | Depth: {depthLabel} mm";
+        }
+
+        private void UpdateDwellProcess()
+        {
+            if (curZone < 1)
+            {
+                dwZo = -1;
+                if (dwellProgressBar != null) dwellProgressBar.Value = 0;
+                return;
+            }
+            if (curZone != dwZo)
+            {
+                dwZo = curZone;
+                dwellStartTime = DateTime.Now;
+            }
+
+            double elapsedSeconds = (DateTime.Now - dwellStartTime).TotalSeconds;
+            double progress = Math.Min(elapsedSeconds / DWELL_SECONDS, 1.0);
+
+            if (dwellProgressBar != null) 
+                dwellProgressBar.Value = progress * 100; 
+
+            if (progress >= 1.0)
+            {
+                OnZoneConfirmed(dwZo); dwZo = -1; // reset so it needs to leave and re-enter to confirm again
+            if (dwellProgressBar != null) dwellProgressBar.Value = 0; 
+            } 
+        } 
+         private void OnZoneConfirmed(int zone)
+        {
+            debugText.Text += $" | CONFIRMED: Zone {zone}";
         }
 
         private void Window_KeyDown(object sender, KeyEventArgs e)
