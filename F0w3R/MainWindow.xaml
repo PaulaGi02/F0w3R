@@ -28,7 +28,7 @@
 
             <!-- test preview area, reuses existing kinect images -->
             <Image x:Name="kinectDepthImageStart" Grid.Column="1" Margin="10" Stretch="Uniform"/>
-            <Image x:Name="kinectColorImageStart" Grid.Column="2" Margin="10" Stretch="Uniform"/>
+            <Image x:Name="flowerPreviewImage" Grid.Column="2" Margin="10" Stretch="Uniform"/>
         </Grid>
 
         <!-- game screen -->

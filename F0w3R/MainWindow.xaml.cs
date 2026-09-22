@@ -18,7 +18,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
-using System.Windows.Threading;
+using System.Windows.Threading;  
 
 namespace Fl0w3R
 {
@@ -57,7 +57,7 @@ namespace Fl0w3R
         };
 
         private Queue<int> recentDepths = new Queue<int>();
-        private const int SMOOTHING_WINDOW = 5;
+        private const int SMOOTHING_WINDOW = 8;
 
         // flower frame images loading
         private BitmapImage[] flowerFrames = new BitmapImage[num_zo];
@@ -117,7 +117,7 @@ namespace Fl0w3R
 
             colorFrameManager = new ColorFrameManager();
             colorFrameManager.Init(sensor, kinectColorImage);
-            kinectColorImageStart.Source = kinectColorImage.Source; // mirror to start screen
+            flowerPreviewImage.Source = flowerFrames[0]; // mirror to start screen
 
             LoadFlowerFrames();
 
@@ -125,7 +125,7 @@ namespace Fl0w3R
             kinectDepthImageStart.Source = depthImageBitmap;
 
             playbackTimer = new DispatcherTimer();
-            playbackTimer.Interval = TimeSpan.FromSeconds(1.0);
+            playbackTimer.Interval = TimeSpan.FromSeconds(1.5);
             playbackTimer.Tick += PlaybackTimer_Tick;
 
         }
@@ -332,7 +332,8 @@ namespace Fl0w3R
         {
             currentState = GameState.Playback;
             playbackIndex = 0;
-            statusText.Text = $"Merken... Score: {score}";
+            statusText.Text = $"Remember... Score: {score}";
+            statusText.Foreground = System.Windows.Media.Brushes.Orange;
             ShowSequenceFrame();
             playbackTimer.Start();
         }
@@ -359,7 +360,8 @@ namespace Fl0w3R
         {
             currentState = GameState.PlayerTurn;
             playerIndex = 0;
-            statusText.Text = $"Du bist dran! Score: {score}";
+            statusText.Text = $"Your Turn! Score: {score}";
+            statusText.Foreground = System.Windows.Media.Brushes.Lime;
             flowerImage.Source = null; // clear during player's turn, or leave last frame — your choice
         }
 
