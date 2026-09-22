@@ -7,29 +7,62 @@
         mc:Ignorable="d"
         Title="Fl0w3R" Height="500" Width="1100" Loaded="Window_Loaded">
 
+    <Grid>
+        <!-- start screen -->
+        <Grid x:Name="startScreenGrid" Visibility="Visible">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
 
-    <Grid Background="Black" RenderTransformOrigin="0.501,0.49" Margin="0,0,0,-16">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="341*" />
-            <ColumnDefinition Width="210*"/>
-            <ColumnDefinition Width="275*" />
-            <ColumnDefinition Width="275*" />
-        </Grid.ColumnDefinitions>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="60" />
-        </Grid.RowDefinitions>
+            <StackPanel Grid.Column="0" Margin="20" VerticalAlignment="Center">
+                <TextBlock Text="Fl0w3R" FontSize="32" FontWeight="Bold" Margin="0,0,0,20"/>
+                <TextBlock TextWrapping="Wrap" FontSize="16">
+                    Lets play a game. Remember the flower stages.
+                    Move away or closer to the sensor to match the Zone.
+                    Hold the position for 2 seconds.
+                </TextBlock>
+                <Button x:Name="startButton" Content="Start" FontSize="20" Margin="0,30,0,0" Height="50" Click="StartButton_Click" Background="LightGray"/>
+            </StackPanel>
 
-        <!-- Depth Image -->
-        <Image x:Name="kinectDepthImage" Grid.Column="0" Grid.Row="0" HorizontalAlignment="Left"  Margin="10,0,0,0" VerticalAlignment="Top"/>
+            <!-- test preview area, reuses existing kinect images -->
+            <Image x:Name="kinectDepthImageStart" Grid.Column="1" Margin="10" Stretch="Uniform"/>
+            <Image x:Name="kinectColorImageStart" Grid.Column="2" Margin="10" Stretch="Uniform"/>
+        </Grid>
 
-        <!--Color Image -->
-        <Image x:Name="kinectColorImage" Grid.Column="3" Grid.Row="0" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,0,275,0" />
-        <Image x:Name="flowerImage" Grid.Column="3" Margin="10,0,10,0" Stretch="Uniform" VerticalAlignment="Center" />
+        <!-- game screen -->
+        <Grid x:Name="gameScreenGrid" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="50"/>
+                <RowDefinition Height="60"/>
+            </Grid.RowDefinitions>
 
-        <ProgressBar x:Name="dwellProgressBar" Grid.Row="1" Grid.ColumnSpan="4" Margin="303,18,28,17" Height="25" Minimum="0" Maximum="100" Value="2" />
+            <Image x:Name="kinectDepthImage" Grid.Row="0" Grid.Column="0" HorizontalAlignment="Left" Margin="10,0,0,0" VerticalAlignment="Top"/>
+            <Image x:Name="kinectColorImage" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Top"/>
+            <Image x:Name="flowerImage" Grid.Row="0" Grid.Column="2" Margin="10" Stretch="Uniform" VerticalAlignment="Center"/>
 
-        <!--Debug Text -->
-        <TextBlock x:Name="debugText" Grid.Row="1" Foreground="Lime" FontSize="20" Text="Zone: -- | Depth: -- mm" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="-0.714,0.667"/>
+            <ProgressBar x:Name="dwellProgressBar" Grid.Row="1" Grid.ColumnSpan="3" Margin="10,5" Height="25" Minimum="0" Maximum="100" Value="0"/>
+
+            <TextBlock x:Name="debugText" Grid.Row="2" Grid.Column="0" FontSize="16" Margin="10" VerticalAlignment="Center" Text="Zone: -- | Depth: -- mm"/>
+
+            <TextBlock x:Name="statusText" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" FontSize="20" FontWeight="Bold" Margin="10" VerticalAlignment="Center" Text="Score: 0"/>
+        </Grid>
+
+        <!-- Display game over -->
+        <Grid x:Name="gameOverGrid" Visibility="Collapsed" Background="#CC000000">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <TextBlock x:Name="gameOverText" Text="Game Over" FontSize="36" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="finalScoreText" Text="Score: 0" FontSize="24" Foreground="White" HorizontalAlignment="Center" Margin="0,10,0,20"/>
+                <Button Content="Nochmal spielen" FontSize="18" Height="40" Click="RestartButton_Click"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>
+
