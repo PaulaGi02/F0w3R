@@ -18,6 +18,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace Fl0w3R
 {
@@ -66,6 +67,17 @@ namespace Fl0w3R
         private DateTime dwellStartTime;
         private const double DWELL_SECONDS = 2.0;
 
+        private enum GameState { Start, Playback, PlayerTurn, GameOver }
+        private GameState currentState = GameState.Start;
+
+        private List<int> sequence = new List<int>();
+        private int playbackIndex = 0;
+        private int playerIndex = 0;
+        private int score = 0;
+        private Random rng = new Random();
+        private DispatcherTimer playbackTimer;
+
+
         public MainWindow()
         {
             InitializeComponent();
@@ -105,8 +117,16 @@ namespace Fl0w3R
 
             colorFrameManager = new ColorFrameManager();
             colorFrameManager.Init(sensor, kinectColorImage);
+            kinectColorImageStart.Source = kinectColorImage.Source; // mirror to start screen
 
             LoadFlowerFrames();
+
+            // assign the same bitmap to both start-screen and game-screen depth images
+            kinectDepthImageStart.Source = depthImageBitmap;
+
+            playbackTimer = new DispatcherTimer();
+            playbackTimer.Interval = TimeSpan.FromSeconds(1.0);
+            playbackTimer.Tick += PlaybackTimer_Tick;
 
         }
 
@@ -241,8 +261,8 @@ namespace Fl0w3R
                 }
             }
 
-        // if we reach here, avgDepth is inside a buffer gap between zones —
-        // hysteresis: keep the last valid zone unchanged instead of flickering
+            // if we reach here, avgDepth is inside a buffer gap between zones —
+            // hysteresis: keep the last valid zone unchanged instead of flickering
         }
         private void UpdateFlowerImage()
         {
@@ -274,19 +294,108 @@ namespace Fl0w3R
             double elapsedSeconds = (DateTime.Now - dwellStartTime).TotalSeconds;
             double progress = Math.Min(elapsedSeconds / DWELL_SECONDS, 1.0);
 
-            if (dwellProgressBar != null) 
-                dwellProgressBar.Value = progress * 100; 
+            if (dwellProgressBar != null)
+                dwellProgressBar.Value = progress * 100;
 
             if (progress >= 1.0)
             {
-                OnZoneConfirmed(dwZo); dwZo = -1; // reset so it needs to leave and re-enter to confirm again
-            if (dwellProgressBar != null) dwellProgressBar.Value = 0; 
-            } 
-        } 
-         private void OnZoneConfirmed(int zone)
-        {
-            debugText.Text += $" | CONFIRMED: Zone {zone}";
+                OnZoneConfirmed(dwZo);
+                dwZo = -1; // reset so it needs to leave and re-enter to confirm again
+                if (dwellProgressBar != null) dwellProgressBar.Value = 0;
+            }
         }
+
+        // NEW: starts a fresh game when the Start button is pressed
+        private void StartButton_Click(object sender, RoutedEventArgs e)
+        {
+            score = 0;
+            sequence.Clear();
+            for (int i = 0; i < 2; i++) // start with 2 frames, as decided
+                sequence.Add(rng.Next(1, num_zo + 1));
+
+            startScreenGrid.Visibility = Visibility.Collapsed;
+            gameOverGrid.Visibility = Visibility.Collapsed;
+            gameScreenGrid.Visibility = Visibility.Visible;
+
+            StartPlayback();
+        }
+
+        // NEW: returns to the start screen after Game Over
+        private void RestartButton_Click(object sender, RoutedEventArgs e)
+        {
+            gameOverGrid.Visibility = Visibility.Collapsed;
+            startScreenGrid.Visibility = Visibility.Visible;
+            currentState = GameState.Start;
+        }
+
+        private void StartPlayback()
+        {
+            currentState = GameState.Playback;
+            playbackIndex = 0;
+            statusText.Text = $"Merken... Score: {score}";
+            ShowSequenceFrame();
+            playbackTimer.Start();
+        }
+
+        private void PlaybackTimer_Tick(object sender, EventArgs e)
+        {
+            playbackIndex++;
+            if (playbackIndex >= sequence.Count)
+            {
+                playbackTimer.Stop();
+                StartPlayerTurn();
+                return;
+            }
+            ShowSequenceFrame();
+        }
+
+        private void ShowSequenceFrame()
+        {
+            int frame = sequence[playbackIndex];
+            flowerImage.Source = flowerFrames[frame - 1];
+        }
+
+        private void StartPlayerTurn()
+        {
+            currentState = GameState.PlayerTurn;
+            playerIndex = 0;
+            statusText.Text = $"Du bist dran! Score: {score}";
+            flowerImage.Source = null; // clear during player's turn, or leave last frame — your choice
+        }
+
+
+        private void OnZoneConfirmed(int zone)
+        {
+            if (currentState != GameState.PlayerTurn) return; // only react during player's turn
+
+            if (zone == sequence[playerIndex])
+            {
+                playerIndex++;
+                flowerImage.Source = flowerFrames[zone - 1]; // brief visual feedback
+
+                if (playerIndex >= sequence.Count)
+                {
+                    // round complete — success
+                    score = sequence.Count;
+                    sequence.Add(rng.Next(1, num_zo + 1)); // +1 new frame
+                    StartPlayback();
+                }
+            }
+            else
+            {
+                TriggerGameOver();
+            }
+        }
+
+        private void TriggerGameOver()
+        {
+            currentState = GameState.GameOver;
+            gameOverText.Text = "Game Over";
+            finalScoreText.Text = $"Score: {score}";
+            gameScreenGrid.Visibility = Visibility.Collapsed;
+            gameOverGrid.Visibility = Visibility.Visible;
+        }
+
 
         private void Window_KeyDown(object sender, KeyEventArgs e)
         {
@@ -294,3 +403,4 @@ namespace Fl0w3R
         }
     }
 }
+
