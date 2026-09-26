@@ -1,48 +1,40 @@
 using Microsoft.Kinect;
-using NUI3D;
 using System;
-using System.CodeDom;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.Remoting.Channels;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using System.Windows.Threading;  
+using System.Windows.Threading;
 
 namespace Fl0w3R
 {
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    /// Fl0w3R v2: Simon-Says memory game controlled by the hand.
+    /// Hand x selects one of four tiles, pushing the hand forward (depth relative to the body) grows the flower.
     /// </summary>
     public partial class MainWindow : Window
     {
+        // === Kinect ===
+        // Sensor and frame reader setup adapted from class examples (SM3603 Topic 03 + Topic 05)
         private KinectSensor sensor;
 
         private FrameDescription depthFrameDescription = null;
         private ushort[] depthData = null;
-        private int bytesPerPixel = 4; // depth -> color image
-        private byte[] depthPixels = null; // color channels 
+        private int bytesPerPixel = 4;        // depth -> color image
+        private byte[] depthPixels = null;    // color channels
         private WriteableBitmap depthImageBitmap = null;
 
-        private ColorFrameManager colorFrameManager;
-
-        //Base structure adapted from the class excises BodyIndexFrame integration and depth Zone detection
         private BodyIndexFrameReader bodyIndexFrameReader = null;
         private FrameDescription bodyIndexFrameDescription = null;
         private byte[] bodyIndexData = null;
 
-        // Hand input
+        // === Flower frames (growth stages: 0 = bud, last = fully grown) ===
+        private const int NUM_FLOWER_FRAMES = 5;
+        private BitmapImage[] flowerFrames = new BitmapImage[NUM_FLOWER_FRAMES];
+
+        // === Hand input ===
         // Filled by mouse simulation for now; later filled by Kinect hand segmentation.
         // Mouse simulation developed with help of Claude (Anthropic), Sept 2026.
         private bool useMouseSimulation = true;
@@ -50,57 +42,36 @@ namespace Fl0w3R
         private double handX = 0.5;          // 0 = left edge, 1 = right edge
         private double handForwardMm = 0;    // distance of hand in front of body (mm)
 
-        private const double HAND_OFFSET_MM = 250;   // hand counts as detected from here (Topic 5: dBody - offset)
+        private const double HAND_OFFSET_MM = 250;     // hand counts as detected from here (Topic 5: dBody - offset)
         private const double SIM_MAX_FORWARD_MM = 600; // mouse at top of window = 600 mm
 
-
-        // Tiles
+        // === Tiles ===
         private const int NUM_TILES = 4;
         private Border[] tiles;
         private Image[] tileImages;
         private int hoveredTile = -1; // -1 = no tile (hand in neutral layer)
 
-        // Layer logic (hand depth relative to body) 
+        // === Layer logic (hand depth relative to body) ===
         private const double GROW_START_MM = 300; // growing starts here (small gap to pointing layer)
         private const double CONFIRM_MM = 450;    // flower fully grown = tile confirmed
         private int lockedTile = -1;              // tile is locked while its flower is growing
         private bool waitingForNeutral = false;   // after a confirm, hand must return to neutral first
 
-
-        // Zone detection state
-        private const int num_zo = 5;
-        private int curZone = -1; // no valid Zone (no person detected)
-
-        // Adding defined Zones in which the Frames change (leaving some space inbetween because of noise)
-        private readonly int[,] zoneRanges = new int[num_zo, 2]
-        {   // Zone 1-5
-            {500, 620},
-            {630, 700},
-            {710, 780},
-            {790, 860},
-            {870, 940},
-        };
-
-        private Queue<int> recentDepths = new Queue<int>();
-        private const int SMOOTHING_WINDOW = 8;
-
-        // flower frame images loading
-        private BitmapImage[] flowerFrames = new BitmapImage[num_zo];
-
-        // dwell state 
-        private int dwZo = -1; // which zone we are currretnly timing
-        private DateTime dwellStartTime;
-        private const double DWELL_SECONDS = 2.0;
-
+        // === Game state ===
         private enum GameState { Start, Playback, PlayerTurn, GameOver }
         private GameState currentState = GameState.Start;
 
-        private List<int> sequence = new List<int>();
+        private List<int> sequence = new List<int>(); // tile indices 0..3
         private int playbackIndex = 0;
+        private bool playbackShowing = false;         // true = a tile is blooming, false = pause
         private int playerIndex = 0;
         private int score = 0;
         private Random rng = new Random();
         private DispatcherTimer playbackTimer;
+
+        private const double PLAYBACK_START_DELAY = 1.0; // pause before a sequence starts (keeps last feedback visible)
+        private const double PLAYBACK_SHOW_SECONDS = 1.0; // how long one tile blooms
+        private const double PLAYBACK_GAP_SECONDS = 0.4;  // pause between steps (makes repeated tiles distinguishable)
 
 
         public MainWindow()
@@ -137,9 +108,6 @@ namespace Fl0w3R
                     96, 96, PixelFormats.Bgr32, null);
                 kinectDepthImage.Source = depthImageBitmap;
                 kinectDepthImageStart.Source = depthImageBitmap;
-
-                colorFrameManager = new ColorFrameManager();
-                colorFrameManager.Init(sensor, kinectColorImage);
             }
             catch (Exception ex)
             {
@@ -148,32 +116,29 @@ namespace Fl0w3R
 
             // everything below works with or without Kinect
             LoadFlowerFrames();
-            flowerPreviewImage.Source = flowerFrames[0]; // now AFTER loading (fixes bug B2.1)
-
+            flowerPreviewImage.Source = flowerFrames[0];
 
             // collect tiles in arrays so they can be handled in loops
             tiles = new Border[] { tile0, tile1, tile2, tile3 };
             tileImages = new Image[] { tileImg0, tileImg1, tileImg2, tileImg3 };
-            foreach (Image img in tileImages)
-                img.Source = flowerFrames[0]; // all tiles start as buds
-
+            ResetAllTilesToBud();
 
             playbackTimer = new DispatcherTimer();
-            playbackTimer.Interval = TimeSpan.FromSeconds(1.5);
             playbackTimer.Tick += PlaybackTimer_Tick;
         }
 
-
         private void LoadFlowerFrames()
         {
-            for (int i = 0; i < num_zo; i++)
+            for (int i = 0; i < NUM_FLOWER_FRAMES; i++)
             {
                 string uriPath = $"pack://application:,,,/Assets/flower{i + 1}.png";
                 flowerFrames[i] = new BitmapImage(new Uri(uriPath, UriKind.Absolute));
             }
         }
 
-        // Store latst body index frame because ...
+        // Kinect frames
+
+        // Stores the latest player mask (255 = background, 0-5 = player); code from class (Topic 05)
         private void BodyIndexFrameReader_FrameArrived(object sender, BodyIndexFrameArrivedEventArgs e)
         {
             using (BodyIndexFrame bodyIndexFrame = e.FrameReference.AcquireFrame())
@@ -183,42 +148,31 @@ namespace Fl0w3R
             }
         }
 
-        // old code
+        // Copies depth data and visualizes it (player in green); code adapted from class (Topic 03 + 05).
+        // Hand segmentation will be added here in step 7.
         private void DepthFrameReader_FrameArrived(object sender, DepthFrameArrivedEventArgs e)
         {
-            // using statement automatically takes care of disposing of 
-            // the DepthFrame object when you are done using it
             using (DepthFrame depthFrame = e.FrameReference.AcquireFrame())
             {
                 if (depthFrame == null) return;
 
                 depthFrame.CopyFrameDataToArray(depthData);
 
-                // depth data to pixels
                 ushort minDepth = depthFrame.DepthMinReliableDistance;
                 ushort maxDepth = depthFrame.DepthMaxReliableDistance;
 
-                // find nearest depth value
-                int nearestDepth = FindNearestDepthInBodyMask();
-                UpdateZoneFromDepth(nearestDepth);
-                UpdateDwellProcess();
-                UpdateDebugText(nearestDepth);
-
-                // visualize depth image (code from class)
                 for (int x = 0; x < depthFrameDescription.Width; x++)
                     for (int y = 0; y < depthFrameDescription.Height; y++)
                     {
                         int index = y * depthFrameDescription.Width + x;
                         ushort depth = depthData[index];
 
-
-                        // highlight person for better seeing/ undertanding
                         bool isPerson = bodyIndexData != null && bodyIndexData[index] != 0xff;
 
                         if (isPerson)
                         {
                             depthPixels[bytesPerPixel * index] = 0;
-                            depthPixels[bytesPerPixel * index + 1] = 255; //green
+                            depthPixels[bytesPerPixel * index + 1] = 255; // green
                             depthPixels[bytesPerPixel * index + 2] = 0;
                         }
                         else
@@ -231,206 +185,14 @@ namespace Fl0w3R
                         }
                     }
 
-
-
                 depthImageBitmap.WritePixels(
-        new Int32Rect(0, 0, depthFrameDescription.Width, depthFrameDescription.Height),
-        depthPixels,
-        depthFrameDescription.Width * bytesPerPixel, 0);
+                    new Int32Rect(0, 0, depthFrameDescription.Width, depthFrameDescription.Height),
+                    depthPixels,
+                    depthFrameDescription.Width * bytesPerPixel, 0);
             }
         }
 
-        // scan only pixels that belong to a person, return the smallest depth found 
-        private int FindNearestDepthInBodyMask()
-        {
-            if (bodyIndexData == null || depthData == null) return -1;
-
-            int nearest = int.MaxValue;
-            bool found = false;
-
-            for (int i = 0; i < bodyIndexData.Length; i++)
-            {
-                // 0xff means "no body detected at this pixel"; any other value (0-5) is a body ID
-                if (bodyIndexData[i] != 0xff)
-                {
-                    ushort depth = depthData[i];
-                    if (depth > 0 && depth < nearest) // depth == 0 means invalid reading
-                    {
-                        nearest = depth;
-                        found = true;
-                    }
-                }
-            }
-
-            return found ? nearest : -1;
-        }
-
-        // smoothing + zone classification with hysteresis 
-        private void UpdateZoneFromDepth(int rawDepth)
-        {
-            if (rawDepth <= 0)
-            {
-                // no person detected — don't change curZone here,
-                return;
-            }
-
-            // moving average to reduce sensor noise
-            recentDepths.Enqueue(rawDepth);
-            if (recentDepths.Count > SMOOTHING_WINDOW)
-                recentDepths.Dequeue();
-
-            double avgDepth = recentDepths.Average();
-
-            // check which fixed zone the smoothed depth falls into
-            for (int z = 0; z < num_zo; z++)
-            {
-                if (avgDepth >= zoneRanges[z, 0] && avgDepth <= zoneRanges[z, 1])
-                {
-                    if (curZone != z + 1)
-                    {
-                        curZone = z + 1;
-                        UpdateFlowerImage();
-                    }
-                    return;
-                }
-            }
-
-            // if we reach here, avgDepth is inside a buffer gap between zones —
-            // hysteresis: keep the last valid zone unchanged instead of flickering
-        }
-        private void UpdateFlowerImage()
-        {
-            if (flowerImage == null || curZone < 1 || curZone > num_zo) return;
-            flowerImage.Source = flowerFrames[curZone - 1];
-
-        }
-        private void UpdateDebugText(int rawDepth)
-        {
-            string zoneLabel = curZone > 0 ? curZone.ToString() : "--";
-            string depthLabel = rawDepth > 0 ? rawDepth.ToString() : "--";
-            debugText.Text = $"Zone: {zoneLabel} | Depth: {depthLabel} mm";
-        }
-
-        private void UpdateDwellProcess()
-        {
-            if (curZone < 1)
-            {
-                dwZo = -1;
-                if (dwellProgressBar != null) dwellProgressBar.Value = 0;
-                return;
-            }
-            if (curZone != dwZo)
-            {
-                dwZo = curZone;
-                dwellStartTime = DateTime.Now;
-            }
-
-            double elapsedSeconds = (DateTime.Now - dwellStartTime).TotalSeconds;
-            double progress = Math.Min(elapsedSeconds / DWELL_SECONDS, 1.0);
-
-            if (dwellProgressBar != null)
-                dwellProgressBar.Value = progress * 100;
-
-            if (progress >= 1.0)
-            {
-                OnZoneConfirmed(dwZo);
-                dwZo = -1; // reset so it needs to leave and re-enter to confirm again
-                if (dwellProgressBar != null) dwellProgressBar.Value = 0;
-            }
-        }
-
-        // NEW: starts a fresh game when the Start button is pressed
-        private void StartButton_Click(object sender, RoutedEventArgs e)
-        {
-            score = 0;
-            sequence.Clear();
-            for (int i = 0; i < 2; i++) // start with 2 frames, as decided
-                sequence.Add(rng.Next(1, num_zo + 1));
-
-            startScreenGrid.Visibility = Visibility.Collapsed;
-            gameOverGrid.Visibility = Visibility.Collapsed;
-            gameScreenGrid.Visibility = Visibility.Visible;
-
-            StartPlayback();
-        }
-
-        // NEW: returns to the start screen after Game Over
-        private void RestartButton_Click(object sender, RoutedEventArgs e)
-        {
-            gameOverGrid.Visibility = Visibility.Collapsed;
-            startScreenGrid.Visibility = Visibility.Visible;
-            currentState = GameState.Start;
-        }
-
-        private void StartPlayback()
-        {
-            currentState = GameState.Playback;
-            playbackIndex = 0;
-            statusText.Text = $"Remember... Score: {score}";
-            statusText.Foreground = System.Windows.Media.Brushes.Orange;
-            ShowSequenceFrame();
-            playbackTimer.Start();
-        }
-
-        private void PlaybackTimer_Tick(object sender, EventArgs e)
-        {
-            playbackIndex++;
-            if (playbackIndex >= sequence.Count)
-            {
-                playbackTimer.Stop();
-                StartPlayerTurn();
-                return;
-            }
-            ShowSequenceFrame();
-        }
-
-        private void ShowSequenceFrame()
-        {
-            int frame = sequence[playbackIndex];
-            flowerImage.Source = flowerFrames[frame - 1];
-        }
-
-        private void StartPlayerTurn()
-        {
-            currentState = GameState.PlayerTurn;
-            playerIndex = 0;
-            statusText.Text = $"Your Turn! Score: {score}";
-            statusText.Foreground = System.Windows.Media.Brushes.Lime;
-            flowerImage.Source = null; // clear during player's turn, or leave last frame — your choice
-        }
-
-
-        private void OnZoneConfirmed(int zone)
-        {
-            if (currentState != GameState.PlayerTurn) return; // only react during player's turn
-
-            if (zone == sequence[playerIndex])
-            {
-                playerIndex++;
-                flowerImage.Source = flowerFrames[zone - 1]; // brief visual feedback
-
-                if (playerIndex >= sequence.Count)
-                {
-                    // round complete — success
-                    score = sequence.Count;
-                    sequence.Add(rng.Next(1, num_zo + 1)); // +1 new frame
-                    StartPlayback();
-                }
-            }
-            else
-            {
-                TriggerGameOver();
-            }
-        }
-
-        private void TriggerGameOver()
-        {
-            currentState = GameState.GameOver;
-            gameOverText.Text = "Game Over";
-            finalScoreText.Text = $"Score: {score}";
-            gameScreenGrid.Visibility = Visibility.Collapsed;
-            gameOverGrid.Visibility = Visibility.Visible;
-        }
+        // Hand input
 
         // Simulates the hand with the mouse: X = left/right, Y = how far the hand is pushed forward
         private void Window_MouseMove(object sender, MouseEventArgs e)
@@ -446,16 +208,25 @@ namespace Fl0w3R
             Title = $"Fl0w3R | Hand: {(handDetected ? "yes" : "no")} | X: {handX:0.00} | forward: {handForwardMm:0} mm";
 
             OnHandInputUpdated();
-
         }
 
-        // Central place for hand input: called by the mouse simulation now,
-        // later by the Kinect hand tracking. Game logic only reads the hand values from here.
         // Central place for hand input: called by the mouse simulation now,
         // later by the Kinect hand tracking. Layer logic developed with help of Claude (Anthropic), Sept 2026.
         private void OnHandInputUpdated()
         {
             if (tiles == null) return; // window not fully loaded yet
+
+            // 0. input only counts during the player's turn
+            if (currentState != GameState.PlayerTurn)
+            {
+                if (hoveredTile != -1)
+                {
+                    hoveredTile = -1;
+                    UpdateTileHighlight();
+                }
+                debugText.Text = $"Input inactive ({currentState})";
+                return;
+            }
 
             // 1. after a confirmation: ignore input until the hand is back in the neutral layer
             if (waitingForNeutral)
@@ -509,6 +280,19 @@ namespace Fl0w3R
             debugText.Text = $"Layer: {layer} | Tile: {hoveredTile} | Growth: {growth:P0}";
         }
 
+        //  Tiles 
+
+        // Hovered tile gets a white frame, the others are dimmed; no hand -> all normal
+        private void UpdateTileHighlight()
+        {
+            for (int i = 0; i < NUM_TILES; i++)
+            {
+                bool isHovered = (i == hoveredTile);
+                tiles[i].BorderBrush = isHovered ? Brushes.White : Brushes.Transparent;
+                tiles[i].Opacity = (hoveredTile == -1 || isHovered) ? 1.0 : 0.5;
+            }
+        }
+
         // shows the flower frame that matches the growth (0..1) on one tile
         private void SetTileGrowth(int tile, double growth)
         {
@@ -522,12 +306,6 @@ namespace Fl0w3R
                 SetTileGrowth(i, 0);
         }
 
-        // called once when a flower is fully grown; connected to the game logic in step 4
-        private void OnTileConfirmed(int tile)
-        {
-            System.Console.WriteLine($"Tile {tile} confirmed");
-        }
-
         // linear mapping (from class, Topic 05)
         private double Map(double value, double start1, double stop1, double start2, double stop2)
         {
@@ -539,24 +317,126 @@ namespace Fl0w3R
             return Math.Max(0, Math.Min(1, v));
         }
 
+        //Game flow
+        // Start -> Playback -> PlayerTurn -> (all correct) Playback with +1 step / (wrong) GameOver
 
-
-        // Hovered tile gets a white frame, the others are dimmed; no hand -> all normal
-        private void UpdateTileHighlight()
+        private void StartButton_Click(object sender, RoutedEventArgs e)
         {
-            for (int i = 0; i < NUM_TILES; i++)
+            score = 0;
+            sequence.Clear();
+            for (int i = 0; i < 2; i++) // start with 2 steps
+                sequence.Add(rng.Next(NUM_TILES));
+
+            ResetAllTilesToBud();
+            hoveredTile = -1;
+            UpdateTileHighlight();
+
+            startScreenGrid.Visibility = Visibility.Collapsed;
+            gameOverGrid.Visibility = Visibility.Collapsed;
+            gameScreenGrid.Visibility = Visibility.Visible;
+
+            StartPlayback();
+        }
+
+        private void RestartButton_Click(object sender, RoutedEventArgs e)
+        {
+            gameOverGrid.Visibility = Visibility.Collapsed;
+            startScreenGrid.Visibility = Visibility.Visible;
+            currentState = GameState.Start;
+        }
+
+        // Plays the sequence on the tiles: bloom -> pause -> bloom -> ...
+        private void StartPlayback()
+        {
+            currentState = GameState.Playback;
+            playbackIndex = 0;
+            // DEBUG: print the full sequence of this round (remove later)
+            System.Console.WriteLine($"Round start, sequence: {string.Join(", ", sequence)}");
+            playbackShowing = false;
+            lockedTile = -1;
+            waitingForNeutral = false;
+
+            statusText.Text = $"Remember... Score: {score}";
+            statusText.Foreground = Brushes.Orange;
+
+            // short delay first, so the last confirmed flower stays visible as feedback
+            playbackTimer.Interval = TimeSpan.FromSeconds(PLAYBACK_START_DELAY);
+            playbackTimer.Start();
+        }
+
+        private void PlaybackTimer_Tick(object sender, EventArgs e)
+        {
+            if (!playbackShowing)
             {
-                bool isHovered = (i == hoveredTile);
-                tiles[i].BorderBrush = isHovered ? Brushes.White : Brushes.Transparent;
-                tiles[i].Opacity = (hoveredTile == -1 || isHovered) ? 1.0 : 0.5;
+                // pause is over -> show next step, or hand over to the player
+                if (playbackIndex >= sequence.Count)
+                {
+                    playbackTimer.Stop();
+                    StartPlayerTurn();
+                    return;
+                }
+
+                ResetAllTilesToBud();
+                SetTileGrowth(sequence[playbackIndex], 1.0);
+                // DEBUG: print which step is shown (remove later)
+                System.Console.WriteLine($"  showing step {playbackIndex}: tile {sequence[playbackIndex]}");
+                playbackShowing = true;
+                playbackTimer.Interval = TimeSpan.FromSeconds(PLAYBACK_SHOW_SECONDS);
+            }
+            else
+            {
+                // bloom is over -> short pause, so the same tile twice in a row is visible as two steps
+                ResetAllTilesToBud();
+                playbackShowing = false;
+                playbackIndex++;
+                playbackTimer.Interval = TimeSpan.FromSeconds(PLAYBACK_GAP_SECONDS);
             }
         }
 
-
-        private void Window_KeyDown(object sender, KeyEventArgs e)
+        private void StartPlayerTurn()
         {
-            Array.Clear(depthPixels, 0, depthPixels.Length);
+            currentState = GameState.PlayerTurn;
+            playerIndex = 0;
+            lockedTile = -1;
+            waitingForNeutral = true; // hand must start from neutral (prevents accidental instant input)
+            ResetAllTilesToBud();
+
+            statusText.Text = $"Your turn! 0/{sequence.Count}";
+            statusText.Foreground = Brushes.Lime;
+        }
+
+        // called once when a flower is fully grown
+        private void OnTileConfirmed(int tile)
+        {
+            if (currentState != GameState.PlayerTurn) return;
+
+            if (tile == sequence[playerIndex])
+            {
+                playerIndex++;
+                statusText.Text = $"Your turn! {playerIndex}/{sequence.Count}";
+
+                if (playerIndex >= sequence.Count)
+                {
+                    // round complete -> next round with one more step
+                    score = sequence.Count;
+                    sequence.Add(rng.Next(NUM_TILES));
+                    StartPlayback();
+                }
+            }
+            else
+            {
+                TriggerGameOver();
+            }
+        }
+
+        private void TriggerGameOver()
+        {
+            playbackTimer.Stop();
+            currentState = GameState.GameOver;
+            gameOverText.Text = "Game Over";
+            finalScoreText.Text = $"Score: {score}";
+            gameScreenGrid.Visibility = Visibility.Collapsed;
+            gameOverGrid.Visibility = Visibility.Visible;
         }
     }
 }
-
