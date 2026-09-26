@@ -5,33 +5,47 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Fl0w3R"
         mc:Ignorable="d"
-        Title="Fl0w3R" Height="500" Width="1100" Loaded="Window_Loaded" MouseMove="Window_MouseMove">
+        Title="Fl0w3R" Height="500" Width="1100"
+        Loaded="Window_Loaded" MouseMove="Window_MouseMove">
 
     <Grid>
         <!-- start screen -->
-        <Grid x:Name="startScreenGrid" Visibility="Visible">
+        <Grid x:Name="startScreenGrid" Visibility="Visible" Background="#1E1E24">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="1.3*"/>
                 <ColumnDefinition Width="1*"/>
                 <ColumnDefinition Width="1*"/>
             </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Column="0" Margin="20" VerticalAlignment="Center">
-                <TextBlock Text="Fl0w3R" FontSize="32" FontWeight="Bold" Margin="0,0,0,20"/>
-                <TextBlock TextWrapping="Wrap" FontSize="16">
-                    Lets play a game. Remember the flower stages.
-                    Move away or closer to the sensor to match the Zone.
-                    Hold the position for 2 seconds.
+            <!-- title, instructions, start -->
+            <StackPanel Grid.Column="0" Margin="30" VerticalAlignment="Center">
+                <TextBlock Text="Fl0w3R" FontSize="40" FontWeight="Bold" Foreground="White" Margin="0,0,0,15"/>
+                <TextBlock TextWrapping="Wrap" FontSize="15" Foreground="#DDDDDD" LineHeight="24">
+                    <Run Text="Watch the flowers bloom and remember the order."/>
+                    <LineBreak/>
+                    <Run Text="1. Raise your hand in front of your body to point at a tile."/>
+                    <LineBreak/>
+                    <Run Text="2. Push your hand forward to let the flower grow."/>
+                    <LineBreak/>
+                    <Run Text="3. Pull your hand back to your body before the next flower."/>
+                    <LineBreak/>
+                    <Run Text="Every round adds one flower. One mistake ends the game."/>
                 </TextBlock>
-                <Button x:Name="startButton" Content="Start" FontSize="20" Margin="0,30,0,0" Height="50" Click="StartButton_Click" Background="LightGray"/>
+                <Button x:Name="startButton" Content="Start" FontSize="20" Height="50" Margin="0,25,0,0"
+                        Click="StartButton_Click" Background="#64B5F6" Foreground="White" BorderThickness="0"/>
             </StackPanel>
 
-            <!-- test preview area, reuses existing kinect images -->
-            <Image x:Name="kinectDepthImageStart" Grid.Column="1" Margin="10" Stretch="Uniform"/>
-            <Image x:Name="flowerPreviewImage" Grid.Column="2" Margin="10" Stretch="Uniform"/>
+            <!-- Kinect view, helps the player to position themselves -->
+            <StackPanel Grid.Column="1" Margin="10" VerticalAlignment="Center">
+                <TextBlock Text="Kinect view" Foreground="Gray" FontSize="13" Margin="0,0,0,5"/>
+                <Image x:Name="kinectDepthImageStart" Stretch="Uniform"/>
+            </StackPanel>
+
+            <!-- flower preview -->
+            <Image x:Name="flowerPreviewImage" Grid.Column="2" Margin="20" Stretch="Uniform"/>
         </Grid>
 
-        <!-- game screen (v2: four tiles) -->
+        <!--game screen -->
         <Grid x:Name="gameScreenGrid" Visibility="Collapsed" Background="#1E1E24">
             <Grid.RowDefinitions>
                 <RowDefinition Height="60"/>
@@ -39,9 +53,9 @@
                 <RowDefinition Height="110"/>
             </Grid.RowDefinitions>
 
-            <!-- status: score / phase -->
+            <!-- status: phase + progress -->
             <TextBlock x:Name="statusText" Grid.Row="0" Text="Score: 0" FontSize="24" FontWeight="Bold"
-               Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                       Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
             <!-- the four tiles -->
             <UniformGrid Grid.Row="1" Columns="4" Margin="20,0">
@@ -67,24 +81,20 @@
                 </Grid.ColumnDefinitions>
                 <Image x:Name="kinectDepthImage" Grid.Column="0" Margin="10" Stretch="Uniform"/>
                 <TextBlock x:Name="debugText" Grid.Column="1" FontSize="14" Foreground="Gray"
-                   Margin="10" VerticalAlignment="Center" Text="--"/>
+                           Margin="10" VerticalAlignment="Center" Text="--"/>
             </Grid>
-
-            <!-- old v1 elements, hidden so the old code still compiles; removed in step 4 -->
-            <Image x:Name="kinectColorImage" Visibility="Collapsed"/>
-            <Image x:Name="flowerImage" Visibility="Collapsed"/>
-            <ProgressBar x:Name="dwellProgressBar" Visibility="Collapsed" Minimum="0" Maximum="100"/>
         </Grid>
 
-
-        <!-- Display game over -->
-        <Grid x:Name="gameOverGrid" Visibility="Collapsed" Background="#CC000000">
+        <!-- game over screen -->
+        <Grid x:Name="gameOverGrid" Visibility="Collapsed" Background="#1E1E24">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                <TextBlock x:Name="gameOverText" Text="Game Over" FontSize="36" Foreground="White" FontWeight="Bold" HorizontalAlignment="Center"/>
-                <TextBlock x:Name="finalScoreText" Text="Score: 0" FontSize="24" Foreground="White" HorizontalAlignment="Center" Margin="0,10,0,20"/>
-                <Button Content="Nochmal spielen" FontSize="18" Height="40" Click="RestartButton_Click"/>
+                <TextBlock x:Name="gameOverText" Text="Game Over" FontSize="40" Foreground="White"
+                           FontWeight="Bold" HorizontalAlignment="Center"/>
+                <TextBlock x:Name="finalScoreText" Text="Score: 0" FontSize="24" Foreground="#DDDDDD"
+                           HorizontalAlignment="Center" Margin="0,10,0,25"/>
+                <Button Content="Play again" FontSize="18" Height="45" Width="200"
+                        Click="RestartButton_Click" Background="#64B5F6" Foreground="White" BorderThickness="0"/>
             </StackPanel>
         </Grid>
     </Grid>
 </Window>
-
