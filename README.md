@@ -1,8 +1,10 @@
 ## To Do
 
-- add Frames and control through depth
-  - define distance and use if statements
-- add Start screen /start button
-- add sequence starting from two/ defining rounds
-- connecting rounds with flower depth
-- adding dwell timer
+- Aktuellen Stand von Git sichern
+- maus Simulation
+- neues Spiel UI
+- Schichtenlogik
+- Spiellogik auf Tiles umstellen
+- Merkphase im Vorbild
+- Start und Endbildschirm polieren
+- Handerkennung mit Emgu
