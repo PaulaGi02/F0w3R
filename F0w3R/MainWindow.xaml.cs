@@ -42,6 +42,18 @@ namespace Fl0w3R
         private FrameDescription bodyIndexFrameDescription = null;
         private byte[] bodyIndexData = null;
 
+        // Hand input
+        // Filled by mouse simulation for now; later filled by Kinect hand segmentation.
+        // Mouse simulation developed with help of Claude (Anthropic), Sept 2026.
+        private bool useMouseSimulation = true;
+        private bool handDetected = false;
+        private double handX = 0.5;          // 0 = left edge, 1 = right edge
+        private double handForwardMm = 0;    // distance of hand in front of body (mm)
+
+        private const double HAND_OFFSET_MM = 250;   // hand counts as detected from here (Topic 5: dBody - offset)
+        private const double SIM_MAX_FORWARD_MM = 600; // mouse at top of window = 600 mm
+
+
         // Zone detection state
         private const int num_zo = 5;
         private int curZone = -1; // no valid Zone (no person detected)
@@ -86,49 +98,50 @@ namespace Fl0w3R
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             System.Console.WriteLine("window loaded");
-            sensor = KinectSensor.GetDefault(); // get the default Kinect sensor 
 
-            //existing depth reader setup
-            // Open the reader for the depth frames
-            DepthFrameReader depthFrameReader = sensor.DepthFrameSource.OpenReader();
-            // register an event handler for FrameArrived 
-            depthFrameReader.FrameArrived += DepthFrameReader_FrameArrived;
+            // Kinect setup is wrapped in try/catch so the app also runs without a sensor/SDK
+            // (mouse simulation mode). Guard added with help of Claude (Anthropic), Sept 2026.
+            try
+            {
+                sensor = KinectSensor.GetDefault();
 
-            //bodyindex Reader setup
-            bodyIndexFrameReader = sensor.BodyIndexFrameSource.OpenReader();
-            bodyIndexFrameReader.FrameArrived += BodyIndexFrameReader_FrameArrived;
-            bodyIndexFrameDescription = sensor.BodyIndexFrameSource.FrameDescription;
+                DepthFrameReader depthFrameReader = sensor.DepthFrameSource.OpenReader();
+                depthFrameReader.FrameArrived += DepthFrameReader_FrameArrived;
 
-            bodyIndexData = new byte[bodyIndexFrameDescription.LengthInPixels];
+                bodyIndexFrameReader = sensor.BodyIndexFrameSource.OpenReader();
+                bodyIndexFrameReader.FrameArrived += BodyIndexFrameReader_FrameArrived;
+                bodyIndexFrameDescription = sensor.BodyIndexFrameSource.FrameDescription;
+                bodyIndexData = new byte[bodyIndexFrameDescription.LengthInPixels];
 
-            sensor.Open();
+                sensor.Open();
 
+                depthFrameDescription = sensor.DepthFrameSource.FrameDescription;
+                depthData = new ushort[depthFrameDescription.LengthInPixels];
+                depthPixels = new byte[depthFrameDescription.LengthInPixels * bytesPerPixel];
 
-            //old code
-            depthFrameDescription = sensor.DepthFrameSource.FrameDescription;
-            depthData = new ushort[depthFrameDescription.LengthInPixels];
-            depthPixels = new byte[depthFrameDescription.LengthInPixels * bytesPerPixel];
+                depthImageBitmap = new WriteableBitmap(
+                    depthFrameDescription.Width, depthFrameDescription.Height,
+                    96, 96, PixelFormats.Bgr32, null);
+                kinectDepthImage.Source = depthImageBitmap;
+                kinectDepthImageStart.Source = depthImageBitmap;
 
-            depthImageBitmap = new WriteableBitmap(
-                                       depthFrameDescription.Width, // 512 
-                                       depthFrameDescription.Height, // 424
-                                       96, 96, PixelFormats.Bgr32, null);
-            kinectDepthImage.Source = depthImageBitmap; // assign the bitmap to WPF image
+                colorFrameManager = new ColorFrameManager();
+                colorFrameManager.Init(sensor, kinectColorImage);
+            }
+            catch (Exception ex)
+            {
+                System.Console.WriteLine("Kinect not available, running in mouse simulation mode: " + ex.Message);
+            }
 
-            colorFrameManager = new ColorFrameManager();
-            colorFrameManager.Init(sensor, kinectColorImage);
-            flowerPreviewImage.Source = flowerFrames[0]; // mirror to start screen
-
+            // everything below works with or without Kinect
             LoadFlowerFrames();
-
-            // assign the same bitmap to both start-screen and game-screen depth images
-            kinectDepthImageStart.Source = depthImageBitmap;
+            flowerPreviewImage.Source = flowerFrames[0]; // now AFTER loading (fixes bug B2.1)
 
             playbackTimer = new DispatcherTimer();
             playbackTimer.Interval = TimeSpan.FromSeconds(1.5);
             playbackTimer.Tick += PlaybackTimer_Tick;
-
         }
+
 
         private void LoadFlowerFrames()
         {
@@ -396,6 +409,20 @@ namespace Fl0w3R
             finalScoreText.Text = $"Score: {score}";
             gameScreenGrid.Visibility = Visibility.Collapsed;
             gameOverGrid.Visibility = Visibility.Visible;
+        }
+
+        // Simulates the hand with the mouse: X = left/right, Y = how far the hand is pushed forward
+        private void Window_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (!useMouseSimulation) return;
+
+            Point p = e.GetPosition(this);
+            handX = Math.Max(0, Math.Min(1, p.X / ActualWidth));
+            handForwardMm = (1 - p.Y / ActualHeight) * SIM_MAX_FORWARD_MM; // bottom = 0, top = max
+            handDetected = handForwardMm >= HAND_OFFSET_MM;
+
+            // temporary debug output in the window title (always visible)
+            Title = $"Fl0w3R | Hand: {(handDetected ? "yes" : "no")} | X: {handX:0.00} | forward: {handForwardMm:0} mm";
         }
 
 
