@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Fl0w3R"
         mc:Ignorable="d"
-        Title="Fl0w3R" Height="500" Width="1100" Loaded="Window_Loaded">
+        Title="Fl0w3R" Height="500" Width="1100" Loaded="Window_Loaded" MouseMove="Window_MouseMove">
 
     <Grid>
         <!-- start screen -->
