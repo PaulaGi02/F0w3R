@@ -54,6 +54,13 @@ namespace Fl0w3R
         private const double SIM_MAX_FORWARD_MM = 600; // mouse at top of window = 600 mm
 
 
+        // === Tiles ===
+        private const int NUM_TILES = 4;
+        private Border[] tiles;
+        private Image[] tileImages;
+        private int hoveredTile = -1; // -1 = no tile (hand in neutral layer)
+
+
         // Zone detection state
         private const int num_zo = 5;
         private int curZone = -1; // no valid Zone (no person detected)
@@ -136,6 +143,14 @@ namespace Fl0w3R
             // everything below works with or without Kinect
             LoadFlowerFrames();
             flowerPreviewImage.Source = flowerFrames[0]; // now AFTER loading (fixes bug B2.1)
+
+
+            // collect tiles in arrays so they can be handled in loops
+            tiles = new Border[] { tile0, tile1, tile2, tile3 };
+            tileImages = new Image[] { tileImg0, tileImg1, tileImg2, tileImg3 };
+            foreach (Image img in tileImages)
+                img.Source = flowerFrames[0]; // all tiles start as buds
+
 
             playbackTimer = new DispatcherTimer();
             playbackTimer.Interval = TimeSpan.FromSeconds(1.5);
@@ -423,6 +438,31 @@ namespace Fl0w3R
 
             // temporary debug output in the window title (always visible)
             Title = $"Fl0w3R | Hand: {(handDetected ? "yes" : "no")} | X: {handX:0.00} | forward: {handForwardMm:0} mm";
+
+            OnHandInputUpdated();
+
+        }
+
+        // Central place for hand input: called by the mouse simulation now,
+        // later by the Kinect hand tracking. Game logic only reads the hand values from here.
+        private void OnHandInputUpdated()
+        {
+            if (tiles == null) return; // window not fully loaded yet
+
+            // hand x (0..1) -> tile index 0..3; no hand -> no tile
+            hoveredTile = handDetected ? Math.Min((int)(handX * NUM_TILES), NUM_TILES - 1) : -1;
+            UpdateTileHighlight();
+        }
+
+        // Hovered tile gets a white frame, the others are dimmed; no hand -> all normal
+        private void UpdateTileHighlight()
+        {
+            for (int i = 0; i < NUM_TILES; i++)
+            {
+                bool isHovered = (i == hoveredTile);
+                tiles[i].BorderBrush = isHovered ? Brushes.White : Brushes.Transparent;
+                tiles[i].Opacity = (hoveredTile == -1 || isHovered) ? 1.0 : 0.5;
+            }
         }
 
 
