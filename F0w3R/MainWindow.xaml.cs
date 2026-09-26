@@ -54,11 +54,17 @@ namespace Fl0w3R
         private const double SIM_MAX_FORWARD_MM = 600; // mouse at top of window = 600 mm
 
 
-        // === Tiles ===
+        // Tiles
         private const int NUM_TILES = 4;
         private Border[] tiles;
         private Image[] tileImages;
         private int hoveredTile = -1; // -1 = no tile (hand in neutral layer)
+
+        // Layer logic (hand depth relative to body) 
+        private const double GROW_START_MM = 300; // growing starts here (small gap to pointing layer)
+        private const double CONFIRM_MM = 450;    // flower fully grown = tile confirmed
+        private int lockedTile = -1;              // tile is locked while its flower is growing
+        private bool waitingForNeutral = false;   // after a confirm, hand must return to neutral first
 
 
         // Zone detection state
@@ -445,14 +451,95 @@ namespace Fl0w3R
 
         // Central place for hand input: called by the mouse simulation now,
         // later by the Kinect hand tracking. Game logic only reads the hand values from here.
+        // Central place for hand input: called by the mouse simulation now,
+        // later by the Kinect hand tracking. Layer logic developed with help of Claude (Anthropic), Sept 2026.
         private void OnHandInputUpdated()
         {
             if (tiles == null) return; // window not fully loaded yet
 
-            // hand x (0..1) -> tile index 0..3; no hand -> no tile
-            hoveredTile = handDetected ? Math.Min((int)(handX * NUM_TILES), NUM_TILES - 1) : -1;
+            // 1. after a confirmation: ignore input until the hand is back in the neutral layer
+            if (waitingForNeutral)
+            {
+                if (!handDetected)
+                {
+                    waitingForNeutral = false;
+                    ResetAllTilesToBud();
+                    hoveredTile = -1;
+                    UpdateTileHighlight();
+                }
+                debugText.Text = "Layer: waiting for neutral";
+                return;
+            }
+
+            // 2. how far the flower has grown: 0 = bud, 1 = fully grown (Map from Topic 5)
+            double growth = Clamp01(Map(handForwardMm, GROW_START_MM, CONFIRM_MM, 0, 1));
+
+            // 3. which tile is under the hand (x position), -1 = no hand
+            int tileUnderHand = handDetected ? Math.Min((int)(handX * NUM_TILES), NUM_TILES - 1) : -1;
+
+            // 4. growing starts -> lock the tile, so sideways drift while pushing doesn't switch tiles
+            if (lockedTile == -1 && tileUnderHand != -1 && growth > 0)
+                lockedTile = tileUnderHand;
+
+            // 5. hand pulled back before the flower was fully grown -> shrink back to bud and unlock
+            if (lockedTile != -1 && growth <= 0)
+            {
+                SetTileGrowth(lockedTile, 0);
+                lockedTile = -1;
+            }
+
+            hoveredTile = (lockedTile != -1) ? lockedTile : tileUnderHand;
+
+            // 6. let the locked flower grow; fully grown = confirmed
+            if (lockedTile != -1)
+            {
+                SetTileGrowth(lockedTile, growth);
+                if (growth >= 1.0)
+                {
+                    int confirmedTile = lockedTile;
+                    lockedTile = -1;
+                    waitingForNeutral = true;
+                    OnTileConfirmed(confirmedTile);
+                }
+            }
+
             UpdateTileHighlight();
+
+            string layer = !handDetected ? "neutral" : (growth > 0 ? "grow" : "point");
+            debugText.Text = $"Layer: {layer} | Tile: {hoveredTile} | Growth: {growth:P0}";
         }
+
+        // shows the flower frame that matches the growth (0..1) on one tile
+        private void SetTileGrowth(int tile, double growth)
+        {
+            int frame = (int)Math.Round(growth * (flowerFrames.Length - 1));
+            tileImages[tile].Source = flowerFrames[frame];
+        }
+
+        private void ResetAllTilesToBud()
+        {
+            for (int i = 0; i < NUM_TILES; i++)
+                SetTileGrowth(i, 0);
+        }
+
+        // called once when a flower is fully grown; connected to the game logic in step 4
+        private void OnTileConfirmed(int tile)
+        {
+            System.Console.WriteLine($"Tile {tile} confirmed");
+        }
+
+        // linear mapping (from class, Topic 05)
+        private double Map(double value, double start1, double stop1, double start2, double stop2)
+        {
+            return (value - start1) / (stop1 - start1) * (stop2 - start2) + start2;
+        }
+
+        private double Clamp01(double v)
+        {
+            return Math.Max(0, Math.Min(1, v));
+        }
+
+
 
         // Hovered tile gets a white frame, the others are dimmed; no hand -> all normal
         private void UpdateTileHighlight()
