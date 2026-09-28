@@ -1,4 +1,8 @@
 using Microsoft.Kinect;
+using Emgu.CV;
+using Emgu.CV.Structure;
+using Emgu.CV.CvEnum;
+using Emgu.CV.Util;
 using System;
 using System.Collections.Generic;
 using System.Windows;
@@ -16,7 +20,7 @@ namespace Fl0w3R
     /// </summary>
     public partial class MainWindow : Window
     {
-        // === Kinect ===
+        // Kinect
         // Sensor and frame reader setup adapted from class examples (SM3603 Topic 03 + Topic 05)
         private KinectSensor sensor;
 
@@ -30,12 +34,12 @@ namespace Fl0w3R
         private FrameDescription bodyIndexFrameDescription = null;
         private byte[] bodyIndexData = null;
 
-        // === Flower frames (growth stages: 0 = bud, last = fully grown) ===
+        // Flower frames (growth stages: 0 = bud, last = fully grown)
         private const int NUM_FLOWER_FRAMES = 5;
         private BitmapImage[] flowerFrames = new BitmapImage[NUM_FLOWER_FRAMES];
 
-        // === Hand input ===
-        // Filled by mouse simulation for now; later filled by Kinect hand segmentation.
+        // Hand input
+        // Filled by mouse simulation (testing without Kinect) or by Kinect hand segmentation; switch with key M.
         // Mouse simulation developed with help of Claude (Anthropic), Sept 2026.
         private bool useMouseSimulation = true;
         private bool handDetected = false;
@@ -45,19 +49,27 @@ namespace Fl0w3R
         private const double HAND_OFFSET_MM = 250;     // hand counts as detected from here (Topic 5: dBody - offset)
         private const double SIM_MAX_FORWARD_MM = 600; // mouse at top of window = 600 mm
 
-        // === Tiles ===
+        // Kinect hand segmentation (Topic 05: dBody - offset, contours from Topic 04/05)
+        private Image<Gray, byte> handMaskImg;           // white = hand pixels, black = rest
+        private const int DEPTH_WIDTH = 512;              // Kinect v2 depth resolution
+        private const int DEPTH_HEIGHT = 424;
+        private const int MIN_BODY_PIXELS = 3000;         // fewer player pixels = no player in view
+        private const double MIN_HAND_AREA = 500;         // smaller blobs = noise (calibrate with Kinect)
+        private bool mirrorX = false;                     // set true if left/right is swapped
+
+        // Tiles
         private const int NUM_TILES = 4;
         private Border[] tiles;
         private Image[] tileImages;
         private int hoveredTile = -1; // -1 = no tile (hand in neutral layer)
 
-        // === Layer logic (hand depth relative to body) ===
+        // Layer logic (hand depth relative to body)
         private const double GROW_START_MM = 300; // growing starts here (small gap to pointing layer)
         private const double CONFIRM_MM = 450;    // flower fully grown = tile confirmed
         private int lockedTile = -1;              // tile is locked while its flower is growing
         private bool waitingForNeutral = false;   // after a confirm, hand must return to neutral first
 
-        // === Game state ===
+        // Game state
         private enum GameState { Start, Playback, PlayerTurn, GameOver }
         private GameState currentState = GameState.Start;
 
@@ -82,6 +94,16 @@ namespace Fl0w3R
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             System.Console.WriteLine("window loaded");
+
+            // Emgu CV setup: own try/catch, so an Emgu problem is not mistaken for a Kinect problem
+            try
+            {
+                handMaskImg = new Image<Gray, byte>(DEPTH_WIDTH, DEPTH_HEIGHT);
+            }
+            catch (Exception ex)
+            {
+                System.Console.WriteLine("Emgu CV not available: " + ex.Message);
+            }
 
             // Kinect setup is wrapped in try/catch so the app also runs without a sensor/SDK
             // (mouse simulation mode). Guard added with help of Claude (Anthropic), Sept 2026.
@@ -136,6 +158,21 @@ namespace Fl0w3R
             }
         }
 
+        // TEMP: tests the Emgu CV setup without Kinect (remove after it works)
+        private void TestEmgu()
+        {
+            var img = new Image<Gray, byte>(200, 100);    // black image
+            img.Draw(new CircleF(new System.Drawing.PointF(150, 50), 20),
+                     new Gray(255), 0);                   // white filled circle = fake hand
+
+            using (var contours = new VectorOfVectorOfPoint())
+            {
+                CvInvoke.FindContours(img, contours, null, RetrType.External, ChainApproxMethod.ChainApproxSimple);
+                System.Drawing.Rectangle box = CvInvoke.BoundingRectangle(contours[0]);
+                System.Console.WriteLine($"Emgu OK: {contours.Size} contour(s), center x = {box.X + box.Width / 2}");
+            }
+        }
+
         // Kinect frames
 
         // Stores the latest player mask (255 = background, 0-5 = player); code from class (Topic 05)
@@ -148,8 +185,9 @@ namespace Fl0w3R
             }
         }
 
-        // Copies depth data and visualizes it (player in green); code adapted from class (Topic 03 + 05).
-        // Hand segmentation will be added here in step 7.
+        // Copies depth data, builds the hand mask and visualizes it:
+        // background = gray depth, body = green, hand = yellow.
+        // Visualization adapted from class (Topic 03 + 05), hand segmentation from Topic 05.
         private void DepthFrameReader_FrameArrived(object sender, DepthFrameArrivedEventArgs e)
         {
             using (DepthFrame depthFrame = e.FrameReference.AcquireFrame())
@@ -161,38 +199,138 @@ namespace Fl0w3R
                 ushort minDepth = depthFrame.DepthMinReliableDistance;
                 ushort maxDepth = depthFrame.DepthMaxReliableDistance;
 
-                for (int x = 0; x < depthFrameDescription.Width; x++)
-                    for (int y = 0; y < depthFrameDescription.Height; y++)
+                // 1. body depth = average depth of all player pixels
+                float dBody = CalculateBodyDepth(out int bodyPixelCount);
+                bool bodyFound = bodyPixelCount > MIN_BODY_PIXELS;
+                float handThreshold = dBody - (float)HAND_OFFSET_MM;
+
+                // 2. hand mask + visualization in one pass
+                byte[,,] mask = handMaskImg != null ? handMaskImg.Data : null;
+                int width = depthFrameDescription.Width;
+
+                for (int y = 0; y < depthFrameDescription.Height; y++)
+                    for (int x = 0; x < width; x++)
                     {
-                        int index = y * depthFrameDescription.Width + x;
+                        int index = y * width + x;
                         ushort depth = depthData[index];
 
-                        bool isPerson = bodyIndexData != null && bodyIndexData[index] != 0xff;
+                        bool isPerson = bodyIndexData[index] != 0xff;
+                        bool isHand = bodyFound && isPerson && depth > 0 && depth < handThreshold;
+                        if (mask != null) mask[y, x, 0] = isHand ? (byte)255 : (byte)0;
 
-                        if (isPerson)
+                        int p = bytesPerPixel * index;
+                        if (isHand)
                         {
-                            depthPixels[bytesPerPixel * index] = 0;
-                            depthPixels[bytesPerPixel * index + 1] = 255; // green
-                            depthPixels[bytesPerPixel * index + 2] = 0;
+                            depthPixels[p] = 0; depthPixels[p + 1] = 255; depthPixels[p + 2] = 255; // yellow
+                        }
+                        else if (isPerson)
+                        {
+                            depthPixels[p] = 0; depthPixels[p + 1] = 255; depthPixels[p + 2] = 0;   // green
                         }
                         else
                         {
                             byte depthByte = (byte)((depth - minDepth) * 255.0 / (maxDepth - minDepth));
                             depthByte = (byte)(255 - depthByte);
-                            depthPixels[bytesPerPixel * index] = depthByte;
-                            depthPixels[bytesPerPixel * index + 1] = depthByte;
-                            depthPixels[bytesPerPixel * index + 2] = depthByte;
+                            depthPixels[p] = depthByte; depthPixels[p + 1] = depthByte; depthPixels[p + 2] = depthByte;
                         }
                     }
 
                 depthImageBitmap.WritePixels(
-                    new Int32Rect(0, 0, depthFrameDescription.Width, depthFrameDescription.Height),
-                    depthPixels,
-                    depthFrameDescription.Width * bytesPerPixel, 0);
+                    new Int32Rect(0, 0, width, depthFrameDescription.Height),
+                    depthPixels, width * bytesPerPixel, 0);
+
+                // 3. hand values from the mask (only in Kinect mode)
+                if (!useMouseSimulation && handMaskImg != null)
+                    UpdateHandFromMask(dBody, bodyFound);
             }
         }
 
+        // average depth of all player pixels (Topic 05, attempt 2)
+        private float CalculateBodyDepth(out int count)
+        {
+            double sum = 0;
+            count = 0;
+            for (int i = 0; i < depthData.Length; i++)
+            {
+                if (bodyIndexData[i] != 0xff && depthData[i] > 0)
+                {
+                    sum += depthData[i];
+                    count++;
+                }
+            }
+            return count > 0 ? (float)(sum / count) : 0;
+        }
+
+        // finds the hand in the mask and fills handDetected / handX / handForwardMm
+        private void UpdateHandFromMask(float dBody, bool bodyFound)
+        {
+            handDetected = false;
+            handForwardMm = 0;
+
+            if (bodyFound)
+            {
+                using (var contours = new VectorOfVectorOfPoint())
+                {
+                    CvInvoke.FindContours(handMaskImg, contours, null, RetrType.External, ChainApproxMethod.ChainApproxSimple);
+
+                    // largest contour = hand (ignores noise and a second, smaller blob)
+                    int best = -1;
+                    double bestArea = MIN_HAND_AREA;
+                    for (int i = 0; i < contours.Size; i++)
+                    {
+                        double area = CvInvoke.ContourArea(contours[i]);
+                        if (area > bestArea) { bestArea = area; best = i; }
+                    }
+
+                    if (best != -1)
+                    {
+                        System.Drawing.Rectangle box = CvInvoke.BoundingRectangle(contours[best]);
+                        handX = (box.X + box.Width / 2.0) / depthFrameDescription.Width;
+                        if (mirrorX) handX = 1 - handX;
+
+                        handForwardMm = dBody - AverageMaskDepth(box);
+                        handDetected = true;
+                    }
+                }
+            }
+
+            // calibration output in the window title
+            Title = $"Fl0w3R | Kinect | dBody: {dBody:0} mm | hand: {(handDetected ? "yes" : "no")} | X: {handX:0.00} | forward: {handForwardMm:0} mm";
+
+            OnHandInputUpdated();
+        }
+
+        // average depth of the white mask pixels inside a box (adapted from CalculateAverageDepth, Topic 05)
+        private float AverageMaskDepth(System.Drawing.Rectangle box)
+        {
+            byte[,,] mask = handMaskImg.Data;
+            double sum = 0;
+            int count = 0;
+            for (int y = box.Top; y < box.Bottom; y++)
+                for (int x = box.Left; x < box.Right; x++)
+                {
+                    if (mask[y, x, 0] == 255)
+                    {
+                        sum += depthData[y * depthFrameDescription.Width + x];
+                        count++;
+                    }
+                }
+            return count > 0 ? (float)(sum / count) : 0;
+        }
+
         // Hand input
+
+        // M = switch between mouse simulation and Kinect hand tracking
+        private void Window_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.M) return;
+
+            useMouseSimulation = !useMouseSimulation;
+            handDetected = false;
+            handForwardMm = 0;
+            OnHandInputUpdated();
+            Title = useMouseSimulation ? "Fl0w3R | mouse simulation" : "Fl0w3R | Kinect hand tracking";
+        }
 
         // Simulates the hand with the mouse: X = left/right, Y = how far the hand is pushed forward
         private void Window_MouseMove(object sender, MouseEventArgs e)
@@ -210,8 +348,8 @@ namespace Fl0w3R
             OnHandInputUpdated();
         }
 
-        // Central place for hand input: called by the mouse simulation now,
-        // later by the Kinect hand tracking. Layer logic developed with help of Claude (Anthropic), Sept 2026.
+        // Central place for hand input: called by the mouse simulation or the Kinect hand tracking.
+        // Layer logic developed with help of Claude (Anthropic), Sept 2026.
         private void OnHandInputUpdated()
         {
             if (tiles == null) return; // window not fully loaded yet
@@ -280,7 +418,7 @@ namespace Fl0w3R
             debugText.Text = $"Layer: {layer} | Tile: {hoveredTile} | Growth: {growth:P0}";
         }
 
-        //  Tiles 
+        // Tiles
 
         // Hovered tile gets a white frame, the others are dimmed; no hand -> all normal
         private void UpdateTileHighlight()
@@ -317,7 +455,7 @@ namespace Fl0w3R
             return Math.Max(0, Math.Min(1, v));
         }
 
-        //Game flow
+        // Game flow
         // Start -> Playback -> PlayerTurn -> (all correct) Playback with +1 step / (wrong) GameOver
 
         private void StartButton_Click(object sender, RoutedEventArgs e)
@@ -350,8 +488,6 @@ namespace Fl0w3R
         {
             currentState = GameState.Playback;
             playbackIndex = 0;
-            // DEBUG: print the full sequence of this round (remove later)
-            System.Console.WriteLine($"Round start, sequence: {string.Join(", ", sequence)}");
             playbackShowing = false;
             lockedTile = -1;
             waitingForNeutral = false;
@@ -378,8 +514,6 @@ namespace Fl0w3R
 
                 ResetAllTilesToBud();
                 SetTileGrowth(sequence[playbackIndex], 1.0);
-                // DEBUG: print which step is shown (remove later)
-                System.Console.WriteLine($"  showing step {playbackIndex}: tile {sequence[playbackIndex]}");
                 playbackShowing = true;
                 playbackTimer.Interval = TimeSpan.FromSeconds(PLAYBACK_SHOW_SECONDS);
             }
