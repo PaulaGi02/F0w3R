@@ -45,7 +45,11 @@ namespace Fl0w3R
         private bool useMouseSimulation = true;  // true = mouse, false = Kinect
         private bool handDetected = false;       // is there a hand in front of the body?
         private double handX = 0.5;              // hand position from 0 (left) to 1 (right)
-        private double handForwardMm = 0;        // how far the hand is in front of the body (mm)
+        private double handForwardMm = 0;
+        private const double REACH_MM = 400;          // hand +-400 mm from body center covers all four tiles (calibrate)
+        private const double DEPTH_FOCAL_PX = 365;    // approx. focal length of the Kinect v2 depth camera (pixels)
+
+        // how far the hand is in front of the body (mm)
 
         private const double HAND_OFFSET_MM = 250;     // from here on the hand counts as detected (Topic 5: dBody - offset)
         private const double SIM_MAX_FORWARD_MM = 600; // mouse at the top of the window = hand 600 mm in front
@@ -147,7 +151,6 @@ namespace Fl0w3R
 
             // everything below works with or without Kinect
             LoadFlowerFrames();
-            flowerPreviewImage.Source = flowerFrames[0]; // flower on the start screen (after loading!)
 
             // put the tiles into arrays so I can handle them in loops
             tiles = new Border[] { tile0, tile1, tile2, tile3 };
@@ -169,7 +172,6 @@ namespace Fl0w3R
         }
 
         //Kinect frames
-
         // saves the newest body index frame, so the depth handler knows which pixels are a person
         // (code from class, Topic 05)
         private void BodyIndexFrameReader_FrameArrived(object sender, BodyIndexFrameArrivedEventArgs e)
@@ -198,7 +200,7 @@ namespace Fl0w3R
 
                 // 1. body depth = average depth of all player pixels
                 //    (the hand is only a small part of the body, so it barely changes the average)
-                float dBody = CalculateBodyDepth(out int bodyPixelCount);
+                float dBody = CalculateBodyDepth(out int bodyPixelCount, out double bodyCenterX);
                 bool bodyFound = bodyPixelCount > MIN_BODY_PIXELS;
                 float handThreshold = dBody - (float)HAND_OFFSET_MM; // everything closer than this is the hand
 
@@ -241,32 +243,40 @@ namespace Fl0w3R
 
                 // 3. get the hand values from the mask (only when the Kinect controls the game)
                 if (!useMouseSimulation && handMaskImg != null)
-                    UpdateHandFromMask(dBody, bodyFound);
+                    UpdateHandFromMask(dBody, bodyFound, bodyCenterX);
             }
         }
 
         // average depth of all player pixels (Topic 05, attempt 2)
         // count = how many player pixels were found (to know if someone is really there)
-        private float CalculateBodyDepth(out int count)
+        // average depth and average x position (body center) of all player pixels (depth idea: Topic 05, attempt 2)
+        private float CalculateBodyDepth(out int count, out double bodyCenterX)
         {
             double sum = 0;
+            double sumX = 0;
             count = 0;
+            int width = depthFrameDescription.Width;
             for (int i = 0; i < depthData.Length; i++)
             {
-                // only pixels that belong to a person and have a valid depth (0 = no reading)
                 if (bodyIndexData[i] != 0xff && depthData[i] > 0)
                 {
                     sum += depthData[i];
+                    sumX += i % width;   // x position of this pixel
                     count++;
                 }
             }
+            bodyCenterX = count > 0 ? sumX / count : width / 2.0;
             return count > 0 ? (float)(sum / count) : 0;
         }
 
+
+
         // finds the hand in the mask and sets handDetected, handX and handForwardMm
-        private void UpdateHandFromMask(float dBody, bool bodyFound)
+        // finds the hand in the mask and fills handDetected / handX / handForwardMm
+        // hand x is measured relative to the body center (relative interaction space, Topic 05),
+        // so the player doesn't have to reach to the image edge for the outer tiles
+        private void UpdateHandFromMask(float dBody, bool bodyFound, double bodyCenterX)
         {
-            // start with "no hand", only set to true if a hand is really found
             handDetected = false;
             handForwardMm = 0;
 
@@ -274,10 +284,9 @@ namespace Fl0w3R
             {
                 using (var contours = new VectorOfVectorOfPoint())
                 {
-                    // find all white blobs in the mask (outer contours only)
                     CvInvoke.FindContours(handMaskImg, contours, null, RetrType.External, ChainApproxMethod.ChainApproxSimple);
 
-                    // the biggest blob is the hand (so small noise or a second hand are ignored)
+                    // largest contour = hand (ignores noise and a second, smaller blob)
                     int best = -1;
                     double bestArea = MIN_HAND_AREA;
                     for (int i = 0; i < contours.Size; i++)
@@ -288,23 +297,28 @@ namespace Fl0w3R
 
                     if (best != -1)
                     {
-                        // hand x = middle of the bounding box, as a value from 0 to 1
                         System.Drawing.Rectangle box = CvInvoke.BoundingRectangle(contours[best]);
-                        handX = (box.X + box.Width / 2.0) / depthFrameDescription.Width;
+                        double handCenterX = box.X + box.Width / 2.0;
+
+                        // reach in pixels depends on the distance: the further away, the fewer pixels
+                        double reachPx = REACH_MM * DEPTH_FOCAL_PX / dBody;
+
+                        // body center -> 0.5, body center +- reach -> 0 / 1
+                        handX = Clamp01(0.5 + (handCenterX - bodyCenterX) / (2 * reachPx));
                         if (mirrorX) handX = 1 - handX;
 
-                        // how far the hand is in front of the body
                         handForwardMm = dBody - AverageMaskDepth(box);
                         handDetected = true;
                     }
                 }
             }
 
-            // values in the window title, so I can calibrate the thresholds while standing in front of the Kinect
+            // calibration output in the window title
             Title = $"Fl0w3R | Kinect | dBody: {dBody:0} mm | hand: {(handDetected ? "yes" : "no")} | X: {handX:0.00} | forward: {handForwardMm:0} mm";
 
             OnHandInputUpdated();
         }
+
 
         // average depth of the hand pixels inside the bounding box
         // (adapted from CalculateAverageDepth, Topic 05)

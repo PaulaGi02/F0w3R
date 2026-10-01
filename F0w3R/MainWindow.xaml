@@ -41,8 +41,6 @@
                 <Image x:Name="kinectDepthImageStart" Stretch="Uniform"/>
             </StackPanel>
 
-            <!-- flower preview -->
-            <Image x:Name="flowerPreviewImage" Grid.Column="2" Margin="20" Stretch="Uniform"/>
         </Grid>
 
         <!--game screen -->
