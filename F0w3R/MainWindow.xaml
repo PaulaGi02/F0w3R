@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:Fl0w3R"
         mc:Ignorable="d"
         Title="Fl0w3R" Height="500" Width="1100"
-        Loaded="Window_Loaded" MouseMove="Window_MouseMove" KeyDown="Window_KeyDown">
+        Loaded="Window_Loaded">
 
     <Grid>
         <!-- start screen -->
@@ -78,8 +78,6 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <Image x:Name="kinectDepthImage" Grid.Column="0" Margin="10" Stretch="Uniform"/>
-                <TextBlock x:Name="debugText" Grid.Column="1" FontSize="14" Foreground="Gray"
-                           Margin="10" VerticalAlignment="Center" Text="--"/>
             </Grid>
         </Grid>
 

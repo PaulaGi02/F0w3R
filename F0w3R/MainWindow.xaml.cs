@@ -1,4 +1,5 @@
 
+
 using Microsoft.Kinect;
 using Emgu.CV;
 using Emgu.CV.Structure;
@@ -8,77 +9,57 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace Fl0w3R
 {
-    /// Fl0w3R is a memory game controlled with the hand.
-    /// The x position of the hand picks one of four tiles,
-    /// pushing the hand forward lets the flower grow.
     public partial class MainWindow : Window
     {
-        //  Kinect 
-        // Sensor and frame reader setup adapted from class examples (SM3603 Topic 03 + Topic 05)
+        // Kinect (setup adapted from class examples, SM3603 Topic 03 + Topic 05)
         private KinectSensor sensor;
+        private BodyIndexFrameReader bodyIndexFrameReader;
+        private FrameDescription depthFrameDescription;  // size of the depth frame (512 x 424)
+        private ushort[] depthData;                      // raw depth per pixel in mm
+        private byte[] bodyIndexData;                    // per pixel: 255 = background, 0-5 = a detected person
+        private int bytesPerPixel = 4;                   // BGR32 image: blue, green, red, unused
+        private byte[] depthPixels;                      // the colored depth image I show on screen
+        private WriteableBitmap depthImageBitmap;        // WPF bitmap that displays depthPixels
 
-        private FrameDescription depthFrameDescription = null; // size of the depth frame (512 x 424)
-        private ushort[] depthData = null;       // raw depth per pixel in mm
-        private int bytesPerPixel = 4;           // BGR32 image: blue, green, red, unused
-        private byte[] depthPixels = null;       // the colored depth image I show on screen
-        private WriteableBitmap depthImageBitmap = null; // WPF bitmap that displays depthPixels
-
-        private BodyIndexFrameReader bodyIndexFrameReader = null;
-        private FrameDescription bodyIndexFrameDescription = null;
-        private byte[] bodyIndexData = null;     // per pixel: 255 = background, 0-5 = a detected person
-
-        //  Flower frames
-        // 5 images of the growing flower: frame 0 = bud, frame 4 = fully grown
+        // Flower frames: 5 images of the growing flower, frame 0 = bud, frame 4 = fully grown
         private const int NUM_FLOWER_FRAMES = 5;
         private BitmapImage[] flowerFrames = new BitmapImage[NUM_FLOWER_FRAMES];
 
-        // Hand input 
-        // These three values are everything the game needs from the hand.
-        // They come either from the mouse (for testing without Kinect) or from the Kinect; switch with key M.
-        private bool useMouseSimulation = true;  // true = mouse, false = Kinect
-        private bool handDetected = false;       // is there a hand in front of the body?
-        private double handX = 0.5;              // hand position from 0 (left) to 1 (right)
-        private double handForwardMm = 0;
-        private const double REACH_MM = 400;          // hand +-400 mm from body center covers all four tiles (calibrate)
-        private const double DEPTH_FOCAL_PX = 365;    // approx. focal length of the Kinect v2 depth camera (pixels)
-
-        // how far the hand is in front of the body (mm)
-
-        private const double HAND_OFFSET_MM = 250;     // from here on the hand counts as detected (Topic 5: dBody - offset)
-        private const double SIM_MAX_FORWARD_MM = 600; // mouse at the top of the window = hand 600 mm in front
-
-        // Kinect hand segmentation
+        // Hand segmentation
         // Idea from Topic 05: everything of the player that is clearly in front of the body is the hand.
         // Contour detection with Emgu CV from Topic 04/05.
-        private Image<Gray, byte> handMaskImg;       // black and white image: white = hand pixels
-        private const int DEPTH_WIDTH = 512;          // Kinect v2 depth resolution
-        private const int DEPTH_HEIGHT = 424;
-        private const int MIN_BODY_PIXELS = 3000;     // if fewer player pixels are found, nobody is really there
-        private const double MIN_HAND_AREA = 500;     // blobs smaller than this are noise, not a hand
-        private bool mirrorX = false;                 // set to true if left and right are swapped
+        private Image<Gray, byte> handMaskImg;         // black and white image: white = hand pixels
+        private const double HAND_OFFSET_MM = 250;     // the hand has to be this far in front of the body (dBody - offset)
+        private const int MIN_BODY_PIXELS = 3000;      // if fewer player pixels are found, nobody is really there
+        private const double MIN_HAND_AREA = 500;      // blobs smaller than this are noise, not a hand
+        private const double REACH_MM = 400;           // hand +-400 mm from the body center covers all four tiles
+        private const double DEPTH_FOCAL_PX = 365;     // approx. focal length of the Kinect v2 depth camera (pixels)
 
-        // Tiles 
+        // Hand input
+        private bool handDetected = false;   // is there a hand in front of the body?
+        private double handX = 0.5;          // hand position from 0 (left) to 1 (right)
+        private double handForwardMm = 0;    // how far the hand is in front of the body (mm)
+
+        // Tiles
         private const int NUM_TILES = 4;
         private Border[] tiles;          // the four colored tiles (so I can loop over them)
         private Image[] tileImages;      // the flower image inside each tile
         private int hoveredTile = -1;    // tile the hand currently points at, -1 = none
 
-        // Layer logic
-        // The depth of the hand relative to the body decides what happens:
-        // neutral (< 250 mm) -> point (250-300 mm) -> grow (300-450 mm) -> confirmed (450 mm)
+        // Layer logic: the depth of the hand relative to the body decides what happens
+        // neutral (< 250 mm) -> point (250-300 mm) -> grow (300-450 mm) -> chosen (450 mm)
         private const double GROW_START_MM = 300;  // the flower starts growing here (small gap after pointing)
         private const double CONFIRM_MM = 450;     // flower fully grown = tile is chosen
         private int lockedTile = -1;               // while a flower grows, its tile stays locked
         private bool waitingForNeutral = false;    // after choosing, the hand has to go back to the body first
 
-        // Game state 
+        // Game state
         private enum GameState { Start, Playback, PlayerTurn, GameOver }
         private GameState currentState = GameState.Start;
 
@@ -90,7 +71,7 @@ namespace Fl0w3R
         private Random rng = new Random();
         private DispatcherTimer playbackTimer;        // timer that plays the sequence step by step
 
-        private const double PLAYBACK_START_DELAY = 1.0; // pause before the sequence starts
+        private const double PLAYBACK_START_DELAY = 1.0;  // pause before the sequence starts
         private const double PLAYBACK_SHOW_SECONDS = 1.0; // how long one flower blooms
         private const double PLAYBACK_GAP_SECONDS = 0.4;  // pause between steps, so the same tile twice is visible as two steps
 
@@ -102,55 +83,9 @@ namespace Fl0w3R
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            System.Console.WriteLine("window loaded");
-
-            // Emgu CV: create the hand mask image once.
-            // Own try/catch, so an Emgu problem is not mistaken for a Kinect problem.
-            try
-            {
-                handMaskImg = new Image<Gray, byte>(DEPTH_WIDTH, DEPTH_HEIGHT);
-            }
-            catch (Exception ex)
-            {
-                System.Console.WriteLine("Emgu CV not available: " + ex.Message);
-            }
-
-            // Kinect setup in try/catch, so the app also runs without a sensor (then mouse only).
-            try
-            {
-                sensor = KinectSensor.GetDefault();
-
-                // depth reader: calls DepthFrameReader_FrameArrived for every new depth frame
-                DepthFrameReader depthFrameReader = sensor.DepthFrameSource.OpenReader();
-                depthFrameReader.FrameArrived += DepthFrameReader_FrameArrived;
-
-                // body index reader: tells me which pixels belong to a person
-                bodyIndexFrameReader = sensor.BodyIndexFrameSource.OpenReader();
-                bodyIndexFrameReader.FrameArrived += BodyIndexFrameReader_FrameArrived;
-                bodyIndexFrameDescription = sensor.BodyIndexFrameSource.FrameDescription;
-                bodyIndexData = new byte[bodyIndexFrameDescription.LengthInPixels];
-
-                sensor.Open();
-
-                // arrays for the depth data and the colored depth image
-                depthFrameDescription = sensor.DepthFrameSource.FrameDescription;
-                depthData = new ushort[depthFrameDescription.LengthInPixels];
-                depthPixels = new byte[depthFrameDescription.LengthInPixels * bytesPerPixel];
-
-                // one bitmap, shown on the start screen and on the game screen
-                depthImageBitmap = new WriteableBitmap(
-                    depthFrameDescription.Width, depthFrameDescription.Height,
-                    96, 96, PixelFormats.Bgr32, null);
-                kinectDepthImage.Source = depthImageBitmap;
-                kinectDepthImageStart.Source = depthImageBitmap;
-            }
-            catch (Exception ex)
-            {
-                System.Console.WriteLine("Kinect not available, running in mouse simulation mode: " + ex.Message);
-            }
-
-            // everything below works with or without Kinect
-            LoadFlowerFrames();
+            // flower images: flower1.png (bud) ... flower5.png (fully grown) from Assets folder
+            for (int i = 0; i < NUM_FLOWER_FRAMES; i++)
+                flowerFrames[i] = new BitmapImage(new Uri($"pack://application:,,,/Assets/flower{i + 1}.png", UriKind.Absolute));
 
             // put the tiles into arrays so I can handle them in loops
             tiles = new Border[] { tile0, tile1, tile2, tile3 };
@@ -159,19 +94,35 @@ namespace Fl0w3R
 
             playbackTimer = new DispatcherTimer();
             playbackTimer.Tick += PlaybackTimer_Tick;
+
+            // Kinect: arrays for the depth data, the body index and the hand mask
+            sensor = KinectSensor.GetDefault();
+            depthFrameDescription = sensor.DepthFrameSource.FrameDescription;
+            depthData = new ushort[depthFrameDescription.LengthInPixels];
+            depthPixels = new byte[depthFrameDescription.LengthInPixels * bytesPerPixel];
+            bodyIndexData = new byte[sensor.BodyIndexFrameSource.FrameDescription.LengthInPixels];
+            handMaskImg = new Image<Gray, byte>(depthFrameDescription.Width, depthFrameDescription.Height);
+
+            // one bitmap for the depth view, shown on the start screen and on the game screen
+            depthImageBitmap = new WriteableBitmap(
+                depthFrameDescription.Width, depthFrameDescription.Height,
+                96, 96, PixelFormats.Bgr32, null);
+            kinectDepthImage.Source = depthImageBitmap;
+            kinectDepthImageStart.Source = depthImageBitmap;
+
+            // depth reader: runs DepthFrameReader_FrameArrived for every new depth frame
+            DepthFrameReader depthFrameReader = sensor.DepthFrameSource.OpenReader();
+            depthFrameReader.FrameArrived += DepthFrameReader_FrameArrived;
+
+            // body index reader: tells me which pixels belong to a person
+            bodyIndexFrameReader = sensor.BodyIndexFrameSource.OpenReader();
+            bodyIndexFrameReader.FrameArrived += BodyIndexFrameReader_FrameArrived;
+
+            sensor.Open();
         }
 
-        // loads flower1.png ... flower5.png from the Assets folder
-        private void LoadFlowerFrames()
-        {
-            for (int i = 0; i < NUM_FLOWER_FRAMES; i++)
-            {
-                string uriPath = $"pack://application:,,,/Assets/flower{i + 1}.png";
-                flowerFrames[i] = new BitmapImage(new Uri(uriPath, UriKind.Absolute));
-            }
-        }
+        // Kinect frames
 
-        //Kinect frames
         // saves the newest body index frame, so the depth handler knows which pixels are a person
         // (code from class, Topic 05)
         private void BodyIndexFrameReader_FrameArrived(object sender, BodyIndexFrameArrivedEventArgs e)
@@ -205,7 +156,7 @@ namespace Fl0w3R
                 float handThreshold = dBody - (float)HAND_OFFSET_MM; // everything closer than this is the hand
 
                 // 2. build the hand mask and the colored depth image in one loop
-                byte[,,] mask = handMaskImg != null ? handMaskImg.Data : null;
+                byte[,,] mask = handMaskImg.Data;
                 int width = depthFrameDescription.Width;
 
                 for (int y = 0; y < depthFrameDescription.Height; y++)
@@ -216,7 +167,7 @@ namespace Fl0w3R
 
                         bool isPerson = bodyIndexData[index] != 0xff;
                         bool isHand = bodyFound && isPerson && depth > 0 && depth < handThreshold;
-                        if (mask != null) mask[y, x, 0] = isHand ? (byte)255 : (byte)0; // white = hand
+                        mask[y, x, 0] = isHand ? (byte)255 : (byte)0; // white = hand
 
                         int p = bytesPerPixel * index;
                         if (isHand)
@@ -241,15 +192,13 @@ namespace Fl0w3R
                     new Int32Rect(0, 0, width, depthFrameDescription.Height),
                     depthPixels, width * bytesPerPixel, 0);
 
-                // 3. get the hand values from the mask (only when the Kinect controls the game)
-                if (!useMouseSimulation && handMaskImg != null)
-                    UpdateHandFromMask(dBody, bodyFound, bodyCenterX);
+                // 3. get the hand values from the mask and pass them to the game
+                UpdateHandFromMask(dBody, bodyFound, bodyCenterX);
             }
         }
 
-        // average depth of all player pixels (Topic 05, attempt 2)
+        // average depth and average x position (body center) of all player pixels (Topic 05, attempt 2)
         // count = how many player pixels were found (to know if someone is really there)
-        // average depth and average x position (body center) of all player pixels (depth idea: Topic 05, attempt 2)
         private float CalculateBodyDepth(out int count, out double bodyCenterX)
         {
             double sum = 0;
@@ -258,6 +207,7 @@ namespace Fl0w3R
             int width = depthFrameDescription.Width;
             for (int i = 0; i < depthData.Length; i++)
             {
+                // only pixels that belong to a person and have a valid depth (0 = no reading)
                 if (bodyIndexData[i] != 0xff && depthData[i] > 0)
                 {
                     sum += depthData[i];
@@ -269,14 +219,12 @@ namespace Fl0w3R
             return count > 0 ? (float)(sum / count) : 0;
         }
 
-
-
-        // finds the hand in the mask and sets handDetected, handX and handForwardMm
-        // finds the hand in the mask and fills handDetected / handX / handForwardMm
+        // finds the hand in the mask and sets handDetected, handX and handForwardMm.
         // hand x is measured relative to the body center (relative interaction space, Topic 05),
         // so the player doesn't have to reach to the image edge for the outer tiles
         private void UpdateHandFromMask(float dBody, bool bodyFound, double bodyCenterX)
         {
+            // start with "no hand", only set to true if a hand is really found
             handDetected = false;
             handForwardMm = 0;
 
@@ -284,9 +232,10 @@ namespace Fl0w3R
             {
                 using (var contours = new VectorOfVectorOfPoint())
                 {
+                    // find all white blobs in the mask (outer contours only)
                     CvInvoke.FindContours(handMaskImg, contours, null, RetrType.External, ChainApproxMethod.ChainApproxSimple);
 
-                    // largest contour = hand (ignores noise and a second, smaller blob)
+                    // the biggest blob is the hand (so small noise or a second hand are ignored)
                     int best = -1;
                     double bestArea = MIN_HAND_AREA;
                     for (int i = 0; i < contours.Size; i++)
@@ -305,20 +254,16 @@ namespace Fl0w3R
 
                         // body center -> 0.5, body center +- reach -> 0 / 1
                         handX = Clamp01(0.5 + (handCenterX - bodyCenterX) / (2 * reachPx));
-                        if (mirrorX) handX = 1 - handX;
 
+                        // how far the hand is in front of the body
                         handForwardMm = dBody - AverageMaskDepth(box);
                         handDetected = true;
                     }
                 }
             }
 
-            // calibration output in the window title
-            Title = $"Fl0w3R | Kinect | dBody: {dBody:0} mm | hand: {(handDetected ? "yes" : "no")} | X: {handX:0.00} | forward: {handForwardMm:0} mm";
-
             OnHandInputUpdated();
         }
-
 
         // average depth of the hand pixels inside the bounding box
         // (adapted from CalculateAverageDepth, Topic 05)
@@ -339,54 +284,13 @@ namespace Fl0w3R
             return count > 0 ? (float)(sum / count) : 0;
         }
 
-        // Hand input
-        // key M switches between mouse simulation and Kinect hand tracking
-        // (also a backup if the Kinect doesn't work during a demo)
-        private void Window_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key != Key.M) return;
+        // Hand input -> tiles 
 
-            useMouseSimulation = !useMouseSimulation;
-            handDetected = false;   // reset the hand when switching, so nothing is triggered by accident
-            handForwardMm = 0;
-            OnHandInputUpdated();
-            Title = useMouseSimulation ? "Fl0w3R | mouse simulation" : "Fl0w3R | Kinect hand tracking";
-        }
-
-        // simulates the hand with the mouse:
-        // mouse left/right = hand left/right, mouse up = hand pushed forward
-        private void Window_MouseMove(object sender, MouseEventArgs e)
-        {
-            if (!useMouseSimulation) return;
-
-            Point p = e.GetPosition(this);
-            handX = Math.Max(0, Math.Min(1, p.X / ActualWidth));                  // 0..1
-            handForwardMm = (1 - p.Y / ActualHeight) * SIM_MAX_FORWARD_MM;        // bottom = 0, top = 600 mm
-            handDetected = handForwardMm >= HAND_OFFSET_MM;                       // same rule as with the Kinect
-
-            // debug values in the window title
-            Title = $"Fl0w3R | Hand: {(handDetected ? "yes" : "no")} | X: {handX:0.00} | forward: {handForwardMm:0} mm";
-
-            OnHandInputUpdated();
-        }
-
-        // Central place for the hand input: mouse and Kinect both end up here,
-        // so the game logic does not care where the values come from.
+        // turns the three hand values into: which tile, how far the flower has grown, tile chosen
         private void OnHandInputUpdated()
         {
-            if (tiles == null) return; // window not fully loaded yet
-
-            // 0. the hand only counts during the player's turn
-            if (currentState != GameState.PlayerTurn)
-            {
-                if (hoveredTile != -1)
-                {
-                    hoveredTile = -1;
-                    UpdateTileHighlight();
-                }
-                debugText.Text = $"Input inactive ({currentState})";
-                return;
-            }
+            // the hand only counts during the player's turn
+            if (currentState != GameState.PlayerTurn) return;
 
             // 1. after choosing a tile: ignore everything until the hand is back at the body
             //    (otherwise one push could choose the same tile several times)
@@ -399,22 +303,21 @@ namespace Fl0w3R
                     hoveredTile = -1;
                     UpdateTileHighlight();
                 }
-                debugText.Text = "Layer: waiting for neutral";
                 return;
             }
 
-            // 2. how far the flower has grown: 0 = bud, 1 = fully grown (Map from Topic 5)
+            // 2. how far the flower has grown: 0 = bud, 1 = fully grown (Map from Topic 05)
             double growth = Clamp01(Map(handForwardMm, GROW_START_MM, CONFIRM_MM, 0, 1));
 
             // 3. which tile is under the hand (4 equal parts of the width), -1 = no hand
             int tileUnderHand = handDetected ? Math.Min((int)(handX * NUM_TILES), NUM_TILES - 1) : -1;
 
-            // 4. as soon as the flower starts growing, the tile is locked
-            //    (the hand moves a bit sideways when pushing, this should not switch the tile)
+            // 4. as soon as the flower starts growing, tile lockes
+            //    (the hand moves a bit sidewaysgoing forward, this shouldn't switch the tile)
             if (lockedTile == -1 && tileUnderHand != -1 && growth > 0)
                 lockedTile = tileUnderHand;
 
-            // 5. hand pulled back before the flower was fully grown -> back to bud, tile is free again
+            // 5. hand pulled back before the flower was fully grown -> reset: back to bud, tile free again
             if (lockedTile != -1 && growth <= 0)
             {
                 SetTileGrowth(lockedTile, 0);
@@ -438,13 +341,7 @@ namespace Fl0w3R
             }
 
             UpdateTileHighlight();
-
-            // debug text at the bottom of the game screen
-            string layer = !handDetected ? "neutral" : (growth > 0 ? "grow" : "point");
-            debugText.Text = $"Layer: {layer} | Tile: {hoveredTile} | Growth: {growth:P0}";
         }
-
-        // Tiles 
 
         // the tile the hand points at gets a white frame, the others get darker;
         // if no hand is there, all tiles look normal
@@ -458,11 +355,10 @@ namespace Fl0w3R
             }
         }
 
-        // shows the flower frame that fits the growth (0..1) on one tile
-        // e.g. growth 0.5 -> frame 2 of 0-4
+        // shows the flower frame that fits the growth (0..1) on one tile, e.g. growth 0.5 -> frame 2 of 0-4
         private void SetTileGrowth(int tile, double growth)
         {
-            int frame = (int)Math.Round(growth * (flowerFrames.Length - 1));
+            int frame = (int)Math.Floor(growth * (NUM_FLOWER_FRAMES - 1));
             tileImages[tile].Source = flowerFrames[frame];
         }
 
@@ -485,9 +381,8 @@ namespace Fl0w3R
             return Math.Max(0, Math.Min(1, v));
         }
 
-        // Game flow
+        // Game flow 
         // Start -> Playback -> PlayerTurn -> (all correct) Playback with one more step / (wrong) GameOver
-
         // start button: new game with a random sequence of 2 steps
         private void StartButton_Click(object sender, RoutedEventArgs e)
         {
@@ -497,18 +392,15 @@ namespace Fl0w3R
                 sequence.Add(rng.Next(NUM_TILES)); // random tile 0-3
 
             ResetAllTilesToBud();
-            hoveredTile = -1;
-            UpdateTileHighlight();
 
             // switch from start screen to game screen
             startScreenGrid.Visibility = Visibility.Collapsed;
-            gameOverGrid.Visibility = Visibility.Collapsed;
             gameScreenGrid.Visibility = Visibility.Visible;
 
             StartPlayback();
         }
 
-        // "Play again": back to the start screen
+        // back to the start screen
         private void RestartButton_Click(object sender, RoutedEventArgs e)
         {
             gameOverGrid.Visibility = Visibility.Collapsed;
@@ -524,6 +416,10 @@ namespace Fl0w3R
             playbackShowing = false;
             lockedTile = -1;
             waitingForNeutral = false;
+
+            // no tile is highlighted while the sequence is shown
+            hoveredTile = -1;
+            UpdateTileHighlight();
 
             statusText.Text = $"Remember... Score: {score}";
             statusText.Foreground = Brushes.Orange;
@@ -566,19 +462,15 @@ namespace Fl0w3R
         {
             currentState = GameState.PlayerTurn;
             playerIndex = 0;
-            lockedTile = -1;
-            waitingForNeutral = true; // hand has to start at the body, so nothing is chosen by accident
-            ResetAllTilesToBud();
+            waitingForNeutral = true; // hand has to start at the body
 
             statusText.Text = $"Your turn! 0/{sequence.Count}";
             statusText.Foreground = Brushes.Lime;
         }
 
-        // called once when a flower is fully grown = the player chose this tile
+        // once when a flower is fully grown = the player chose this tile
         private void OnTileConfirmed(int tile)
         {
-            if (currentState != GameState.PlayerTurn) return;
-
             if (tile == sequence[playerIndex])
             {
                 // correct -> next step
@@ -595,20 +487,13 @@ namespace Fl0w3R
             }
             else
             {
-                // wrong tile -> game over
-                TriggerGameOver();
+                // wrong tile -> game over screen with the score
+                currentState = GameState.GameOver;
+                finalScoreText.Text = $"Score: {score}";
+                gameScreenGrid.Visibility = Visibility.Collapsed;
+                gameOverGrid.Visibility = Visibility.Visible;
             }
-        }
-
-        // shows the game over screen with the score
-        private void TriggerGameOver()
-        {
-            playbackTimer.Stop();
-            currentState = GameState.GameOver;
-            gameOverText.Text = "Game Over";
-            finalScoreText.Text = $"Score: {score}";
-            gameScreenGrid.Visibility = Visibility.Collapsed;
-            gameOverGrid.Visibility = Visibility.Visible;
         }
     }
 }
+
