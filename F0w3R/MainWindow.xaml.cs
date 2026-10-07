@@ -58,7 +58,7 @@ namespace Fl0w3R
         private bool waitingForNeutral = false;    // after choosing, the hand has to go back to the body first
 
         // Game state
-        private enum GameState { Start, Playback, PlayerTurn, GameOver }
+        private enum GameState { Start, Playback, PlayerTurn, GameOver } //source: https://learn.microsoft.com/en-us/dotnet/api/system.enum?view=net-10.0
         private GameState currentState = GameState.Start;
 
         private List<int> sequence = new List<int>(); // the order the player has to remember (tile numbers 0-3)
@@ -67,7 +67,7 @@ namespace Fl0w3R
         private int playerIndex = 0;                  // which step the player has to enter next
         private int score = 0;
         private Random rng = new Random();
-        private DispatcherTimer playbackTimer;        // timer that plays the sequence step by step
+        private DispatcherTimer playbackTimer;        // timer that plays the sequence step by step source: https://learn.microsoft.com/en-us/dotnet/api/system.windows.threading.dispatchertimer
 
         private const double PLAYBACK_START_DELAY = 1.0;  // pause before the sequence starts
         private const double PLAYBACK_SHOW_SECONDS = 1.0; // how long one flower blooms
@@ -392,7 +392,7 @@ namespace Fl0w3R
             ResetAllTilesToBud();
 
             // switch from start screen to game screen
-            startScreenGrid.Visibility = Visibility.Collapsed;
+            startScreenGrid.Visibility = Visibility.Collapsed; // source: https://www.c-sharpcorner.com/article/visibilitycollapsed-vs-visibilityhidden-in-wpf?srsltid=AU7gw4WMyxQWJLatWgnqC3mM17z42D0jk9JjvfqxI5b9QCxfnohNVuDb
             gameScreenGrid.Visibility = Visibility.Visible;
 
             StartPlayback();
