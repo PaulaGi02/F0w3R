@@ -1,5 +1,3 @@
-
-
 using Microsoft.Kinect;
 using Emgu.CV;
 using Emgu.CV.Structure;
@@ -27,7 +25,7 @@ namespace Fl0w3R
         private byte[] depthPixels;                      // the colored depth image I show on screen
         private WriteableBitmap depthImageBitmap;        // WPF bitmap that displays depthPixels
 
-        // Flower frames: 5 images of the growing flower, frame 0 = bud, frame 4 = fully grown
+        // Flower frames: 5 images of the growing flower, frame 0 = bud, frame 4 = fully grown source: https://codemia.io/knowledge-hub/path/setting_wpf_image_source_in_code
         private const int NUM_FLOWER_FRAMES = 5;
         private BitmapImage[] flowerFrames = new BitmapImage[NUM_FLOWER_FRAMES];
 
@@ -235,7 +233,7 @@ namespace Fl0w3R
                     // find all white blobs in the mask (outer contours only)
                     CvInvoke.FindContours(handMaskImg, contours, null, RetrType.External, ChainApproxMethod.ChainApproxSimple);
 
-                    // the biggest blob is the hand (so small noise or a second hand are ignored)
+                    // the biggest blob is the hand (so small noise or a second hand are ignored) source: https://docs.opencv.org/4.13.0/dd/d49/tutorial_py_contour_features.html
                     int best = -1;
                     double bestArea = MIN_HAND_AREA;
                     for (int i = 0; i < contours.Size; i++)
@@ -496,4 +494,3 @@ namespace Fl0w3R
         }
     }
 }
-
