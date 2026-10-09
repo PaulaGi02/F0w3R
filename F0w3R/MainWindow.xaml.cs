@@ -83,7 +83,7 @@ namespace Fl0w3R
         {
             // flower images: flower1.png (bud) ... flower5.png (fully grown) from Assets folder
             for (int i = 0; i < NUM_FLOWER_FRAMES; i++)
-                flowerFrames[i] = new BitmapImage(new Uri($"pack://application:,,,/Assets/flower{i + 1}.png", UriKind.Absolute));
+                flowerFrames[i] = new BitmapImage(new Uri($"pack://application:,,,/Assets/flower{i + 1}.png", UriKind.Absolute)); // source: https://codemia.io/knowledge-hub/path/setting_wpf_image_source_in_code
 
             // put the tiles into arrays so I can handle them in loops
             tiles = new Border[] { tile0, tile1, tile2, tile3 };
