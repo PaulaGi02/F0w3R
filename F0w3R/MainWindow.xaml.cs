@@ -356,7 +356,7 @@ namespace Fl0w3R
         // shows the flower frame that fits the growth (0..1) on one tile, e.g. growth 0.5 -> frame 2 of 0-4
         private void SetTileGrowth(int tile, double growth)
         {
-            int frame = (int)Math.Floor(growth * (NUM_FLOWER_FRAMES - 1));
+            int frame = (int)Math.Floor(growth * (NUM_FLOWER_FRAMES - 1)); 
             tileImages[tile].Source = flowerFrames[frame];
         }
 
@@ -374,7 +374,7 @@ namespace Fl0w3R
         }
 
         // keeps a value between 0 and 1
-        private double Clamp01(double v)
+        private double Clamp01(double v) // source: https://code-maze.com/csharp-math/
         {
             return Math.Max(0, Math.Min(1, v));
         }
