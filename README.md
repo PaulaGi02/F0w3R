@@ -1,10 +1,8 @@
 ## To Do
 
-- Aktuellen Stand von Git sichern
-- maus Simulation
-- neues Spiel UI
-- Schichtenlogik
-- Spiellogik auf Tiles umstellen
-- Merkphase im Vorbild
-- Start und Endbildschirm polieren
-- Handerkennung mit Emgu
+- ColorframeReader Rausnehmen
+- YT Video
+- Text korrigieren
+- README
+- Frage klären, warum Computer immer Warnhinweis gibt
+- Design Optimieren
