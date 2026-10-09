@@ -233,7 +233,7 @@ namespace Fl0w3R
                     // find all white blobs in the mask (outer contours only)
                     CvInvoke.FindContours(handMaskImg, contours, null, RetrType.External, ChainApproxMethod.ChainApproxSimple);
 
-                    // the biggest blob is the hand (so small noise or a second hand are ignored) source: https://docs.opencv.org/4.13.0/dd/d49/tutorial_py_contour_features.html
+                    // the biggest blob is the hand (so small noise or a second hand are ignored) source: https://docs.opencv.org/4.13.0/dd/d49/tutorial_py_contour_features.html/ https://en.morzel.net/posts/detecting-a-drone-opencv-in-dotnet-for-beginners-emgu-cv-3-visual-studio-2017-part-3/
                     int best = -1;
                     double bestArea = MIN_HAND_AREA;
                     for (int i = 0; i < contours.Size; i++)
@@ -304,8 +304,8 @@ namespace Fl0w3R
                 return;
             }
 
-            // 2. how far the flower has grown: 0 = bud, 1 = fully grown (Map from Topic 05)
-            double growth = Clamp01(Map(handForwardMm, GROW_START_MM, CONFIRM_MM, 0, 1));
+            // 2. how far the flower has grown: 0 = bud, 1 = fully grown (Map from Topic 05 & source: https://makecode.microbit.org/reference/pins/map)
+            double growth = Clamp01(Map(handForwardMm, GROW_START_MM, CONFIRM_MM, 0, 1)); // source: https://code-maze.com/csharp-math/
 
             // 3. which tile is under the hand (4 equal parts of the width), -1 = no hand
             int tileUnderHand = handDetected ? Math.Min((int)(handX * NUM_TILES), NUM_TILES - 1) : -1;
