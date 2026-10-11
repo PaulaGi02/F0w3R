@@ -9,39 +9,153 @@
         Loaded="Window_Loaded">
 
     <Grid>
-        <!-- start screen -->
+
+        <!-- START SCREEN -->
+        <!-- Viewbox scales the whole start screen to the window size, so nothing gets cut off -->
         <Grid x:Name="startScreenGrid" Visibility="Visible" Background="#1E1E24">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="1.3*"/>
-                <ColumnDefinition Width="1*"/>
-                <ColumnDefinition Width="1*"/>
-            </Grid.ColumnDefinitions>
+            <Viewbox Stretch="Uniform" Margin="10">
+                <Grid Width="1100" Height="640">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="1.25*"/>
+                        <ColumnDefinition Width="1*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-            <!-- title, instructions, start -->
-            <StackPanel Grid.Column="0" Margin="30" VerticalAlignment="Center">
-                <TextBlock Text="Fl0w3R" FontSize="40" FontWeight="Bold" Foreground="White" Margin="0,0,0,15"/>
-                <TextBlock TextWrapping="Wrap" FontSize="15" Foreground="#DDDDDD" LineHeight="24">
-                    <Run Text="Watch the flowers bloom and remember the order."/>
-                    <LineBreak/>
-                    <Run Text="1. Raise your hand in front of your body to point at a tile."/>
-                    <LineBreak/>
-                    <Run Text="2. Push your hand forward to let the flower grow."/>
-                    <LineBreak/>
-                    <Run Text="3. Pull your hand back to your body before the next flower."/>
-                    <LineBreak/>
-                    <Run Text="Every round adds one flower. One mistake ends the game."/>
-                </TextBlock>
-                <Button x:Name="startButton" Content="Start" FontSize="20" Height="50" Margin="0,25,0,0"
-                        Click="StartButton_Click" Background="#64B5F6" Foreground="White" BorderThickness="0"/>
-            </StackPanel>
+                    <!-- title, how to play, start button -->
+                    <StackPanel Grid.Column="0" Margin="40,30,20,10" VerticalAlignment="Center">
+                        <TextBlock Text="Fl0w3R" FontSize="60" FontWeight="Bold" Foreground="#DDDDDD" HorizontalAlignment="Left">
+                            
+                        </TextBlock>
+                        <TextBlock Text="A memory game you play with your hand." FontSize="18"
+                                   Foreground="#BBBBBB" Margin="0,0,0,24"/>
 
-            <!-- Kinect view, helps the player to position themselves -->
-            <StackPanel Grid.Column="1" Margin="10" VerticalAlignment="Center">
-                <TextBlock Text="Kinect view" Foreground="Gray" FontSize="13" Margin="0,0,0,5"/>
-                <Image x:Name="kinectDepthImageStart" Stretch="Uniform"/>
-            </StackPanel>
+                        <!-- step 1 -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="44"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="16" Foreground="#DDDDDD" LineHeight="23">
+                                <Run Text="Watch:" FontWeight="Bold" Foreground="White"/>
+                                <Run Text="The flowers bloom one after another. Remember the order."/>
+                            </TextBlock>
+                        </Grid>
 
+                        <!-- step 2 -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="44"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="16" Foreground="#DDDDDD" LineHeight="23">
+                                <Run Text="Point:" FontWeight="Bold" Foreground="White"/>
+                                <Run Text="Raise your hand in front of your body. The tile in front of it lights up. Move left or right to switch tiles."/>
+                            </TextBlock>
+                        </Grid>
+
+                        <!-- step 3 -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="44"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="16" Foreground="#DDDDDD">
+                                <Run Text="Push:" FontWeight="Bold" Foreground="White"/>
+                                <Run Text="Move your hand straight towards the screen. The flower grows. Fully grown means chosen."/>
+                            </TextBlock>
+                        </Grid>
+
+                        <!-- step 4 -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions> 
+                                <ColumnDefinition Width="44"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="16" Foreground="#DDDDDD" >
+                                <Run Text="Return:" FontWeight="Bold" Foreground="White"/>
+                                <Run Text="Bring your hand back to your body before you choose the next flower."/>
+                            </TextBlock>
+                        </Grid>
+
+                        <TextBlock Text="Every round adds one flower. One wrong flower ends the game."
+                                   FontSize="14" Foreground="#999999" Margin="44,4,0,0"/>
+
+                        <!-- start button with rounded corners and its own hover colors -->
+                        <Button x:Name="startButton" Content="Start" Click="StartButton_Click"
+                                HorizontalAlignment="Left" Width="220" Height="52" Margin="44,22,0,0"
+                                FontSize="20" FontWeight="Bold" Foreground="White" Cursor="Hand">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="bg" Background="#64B5F6" CornerRadius="26">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bg" Property="Background" Value="#90CAF9"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="bg" Property="Background" Value="#42A5F5"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Kinect view card: helps the player to stand in the right place -->
+                    <Border Grid.Column="1" Margin="20,40,40,20" Background="#2A2A33" 
+                            Padding="18" VerticalAlignment="Center">
+                        <StackPanel>
+                            <TextBlock Text="Kinect view" FontSize="16" FontWeight="Bold" Foreground="White" Margin="0,0,0,10"/>
+                            <Border Background="Black" CornerRadius="10" Height="290">
+                                <Image x:Name="kinectDepthImageStart" Stretch="Uniform"/>
+                            </Border>
+                            <TextBlock TextWrapping="Wrap" FontSize="14" Foreground="#AAAAAA" Margin="0,10,0,0" LineHeight="20">
+                                <Run Text="Stand about 2 m in front of the sensor. You show up"/>
+                                <Run Text="green" FontWeight="Bold" Foreground="#66BB6A"/><Run Text=", your hand"/>
+                                <Run Text="yellow" FontWeight="Bold" Foreground="#FFEE58"/><Run Text="."/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- decoration + explanation: the five growth stages of the flower -->
+                    <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="84,0,40,28">
+                        <TextBlock Text="Push your hand forward and the flower grows:" FontSize="14"
+                                   Foreground="#AAAAAA" Margin="0,0,0,10"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="88" Height="88" Background="White" CornerRadius="14" Padding="6">
+                                <Image Source="/Assets/flower1.png" Stretch="Uniform"/>
+                            </Border>
+                            <TextBlock Text="›" FontSize="30" Foreground="#666666" VerticalAlignment="Center" Margin="12,0"/>
+                            <Border Width="88" Height="88" Background="White" CornerRadius="14" Padding="6">
+                                <Image Source="/Assets/flower2.png" Stretch="Uniform"/>
+                            </Border>
+                            <TextBlock Text="›" FontSize="30" Foreground="#666666" VerticalAlignment="Center" Margin="12,0"/>
+                            <Border Width="88" Height="88" Background="White" CornerRadius="14" Padding="6">
+                                <Image Source="/Assets/flower3.png" Stretch="Uniform"/>
+                            </Border>
+                            <TextBlock Text="›" FontSize="30" Foreground="#666666" VerticalAlignment="Center" Margin="12,0"/>
+                            <Border Width="88" Height="88" Background="White" CornerRadius="14" Padding="6">
+                                <Image Source="/Assets/flower4.png" Stretch="Uniform"/>
+                            </Border>
+                            <TextBlock Text="›" FontSize="30" Foreground="#666666" VerticalAlignment="Center" Margin="12,0"/>
+                            <Border Width="88" Height="88" Background="White" CornerRadius="14" Padding="4"
+                                    BorderBrush="#FFB74D" BorderThickness="3">
+                                <Image Source="/Assets/flower5.png" Stretch="Uniform"/>
+                            </Border>
+                            <TextBlock Text="chosen!" FontSize="20" FontWeight="Bold" Foreground="#FFB74D"
+                                       VerticalAlignment="Center" Margin="16,0,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Viewbox>
         </Grid>
+
+
+
 
         <!--game screen -->
         <Grid x:Name="gameScreenGrid" Visibility="Collapsed" Background="#1E1E24">
