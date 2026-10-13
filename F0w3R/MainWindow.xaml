@@ -9,7 +9,7 @@
         Loaded="Window_Loaded">
 
     <Grid>
-
+        <!-- Design by me, played with the toolbox, and then changed what I did not like. As this is very basic, the code is similar to the one in class -->
         <!-- START SCREEN -->
         <!-- Viewbox scales the whole start screen to the window size, so nothing gets cut off -->
         <Grid x:Name="startScreenGrid" Visibility="Visible" Background="#1E1E24">
